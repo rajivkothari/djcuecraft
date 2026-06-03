@@ -14,17 +14,27 @@ DJs spend too much time manually cleaning inconsistent genre tags, decade labels
 
 ## MVP Boundaries
 
-Phase 1 focuses on local scanning, metadata extraction, SQLite storage, rule-based genre normalization, decade normalization, and review status tracking.
+Phase 1 focuses on local scanning, metadata extraction, SQLite storage, rule-based genre normalization, decade normalization, review status tracking, CSV review workflows, experimental BPM and beat analysis, cue point proposals, and a minimal local review UI.
 
-The app does not write changes back to audio files in Phase 1.
+The app does not write changes back to audio files, DJ software databases, or cloud services in Phase 1. All cleanup results remain local SQLite records or exported review files.
+
+## Current Implementation
+
+- Folder scanning for supported local audio files.
+- Embedded metadata reading.
+- SQLite persistence for tracks, review history, correction history, BPM values, beat timestamps, and cue point proposals.
+- Rule-based genre and decade normalization.
+- CSV export and CSV correction import.
+- Experimental BPM detection.
+- Experimental beat timestamp storage and cue point proposals.
+- Minimal browser-based local review UI.
 
 ## Future Features
 
-- CSV export.
-- Manual correction loop.
 - Safe metadata write-back with backups.
 - MusicBrainz or AcoustID lookup.
-- BPM and beat-grid analysis.
-- Cue point proposal engine.
+- Improved BPM, beat-grid, and cue point accuracy.
+- Dedicated cue point review workflow.
 - Export adapters for DJ library ecosystems.
+- Desktop wrapper with Tauri or Electron.
 

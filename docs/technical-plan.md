@@ -24,6 +24,8 @@ The CLI calls the scanner, extracts metadata for each file, normalizes fields, t
 
 SQLite is the persistence layer for scanned track records. Phase 1 uses a `tracks` table with enough columns to support review queues and future update workflows, including experimental `bpm` and `bpm_confidence` fields. Beat timestamps live in `beat_timestamps`, and proposed cue points live in `cue_points`. It includes the legacy `correction_history` table for CSV correction details and the general `review_history` table for audit records from UI edits and CSV correction imports.
 
+Schema initialization uses SQLite `PRAGMA user_version` to track the current schema version. Forward migrations live in `database.py`, so legacy local databases can be upgraded without replacing user review data.
+
 CSV export is read-only with respect to music files. It exports database records for review and does not apply metadata changes to audio files.
 
 Correction import is also read-only with respect to music files. It updates only SQLite rows, marks changed tracks as `approved`, and records original suggested genre, corrected genre, timestamp, and source CSV file.

@@ -26,6 +26,8 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
+Setup also installs the `dj-library-prep` console command. The examples below use `python -m dj_library_prep.cli` so the active Python environment is explicit.
+
 For experimental BPM detection, install the optional audio dependencies:
 
 ```powershell

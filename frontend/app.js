@@ -22,20 +22,23 @@ async function loadTracks() {
   summaryEl.textContent = "Loading tracks...";
   const status = statusFilter.value;
   const url = status ? `/api/tracks?status=${encodeURIComponent(status)}` : "/api/tracks";
-  const response = await fetch(url);
-  const payload = await response.json();
-  renderTracks(payload.tracks || []);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error("Track load failed");
+    }
+    const payload = await response.json();
+    renderTracks(payload.tracks || []);
+  } catch (error) {
+    summaryEl.textContent = "Unable to load tracks";
+    renderTableMessage("Unable to load tracks");
+  }
 }
 
 function renderTracks(tracks) {
   summaryEl.textContent = `${tracks.length} tracks`;
   if (tracks.length === 0) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 6;
-    cell.textContent = "No tracks";
-    row.appendChild(cell);
-    rowsEl.appendChild(row);
+    renderTableMessage("No tracks");
     return;
   }
 
@@ -87,26 +90,29 @@ async function saveTrack(row) {
 
   saveButton.disabled = true;
   rowState.textContent = "Saving...";
-  const response = await fetch(`/api/tracks/${trackId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const response = await fetch(`/api/tracks/${trackId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    rowState.textContent = error.error || "Save failed";
+    if (!response.ok) {
+      rowState.textContent = await responseErrorMessage(response, "Save failed");
+      return;
+    }
+
+    const result = await response.json();
+    const updated = result.track;
+    for (const field of editableFields) {
+      row.querySelector(`[data-input="${field}"]`).value = updated[field] || "";
+    }
+    rowState.textContent = "Saved";
+  } catch (error) {
+    rowState.textContent = "Save failed";
+  } finally {
     saveButton.disabled = false;
-    return;
   }
-
-  const result = await response.json();
-  const updated = result.track;
-  for (const field of editableFields) {
-    row.querySelector(`[data-input="${field}"]`).value = updated[field] || "";
-  }
-  rowState.textContent = "Saved";
-  saveButton.disabled = false;
 }
 
 async function loadHistory(row) {
@@ -114,25 +120,29 @@ async function loadHistory(row) {
   const panel = row.querySelector('[data-field="history_panel"]');
   panel.textContent = "Loading history...";
 
-  const response = await fetch(`/api/tracks/${trackId}/history`);
-  if (!response.ok) {
+  try {
+    const response = await fetch(`/api/tracks/${trackId}/history`);
+    if (!response.ok) {
+      panel.textContent = "History unavailable";
+      return;
+    }
+
+    const payload = await response.json();
+    const history = payload.history || [];
+    if (history.length === 0) {
+      panel.textContent = "No edits";
+      return;
+    }
+
+    panel.innerHTML = "";
+    for (const record of history.slice(0, 5)) {
+      const item = document.createElement("div");
+      item.className = "historyItem";
+      item.textContent = `${record.timestamp} ${record.source}: ${record.previous_review_status} -> ${record.new_review_status}; ${valueOrDash(record.previous_normalized_primary_genre)} -> ${valueOrDash(record.new_normalized_primary_genre)}`;
+      panel.appendChild(item);
+    }
+  } catch (error) {
     panel.textContent = "History unavailable";
-    return;
-  }
-
-  const payload = await response.json();
-  const history = payload.history || [];
-  if (history.length === 0) {
-    panel.textContent = "No edits";
-    return;
-  }
-
-  panel.innerHTML = "";
-  for (const record of history.slice(0, 5)) {
-    const item = document.createElement("div");
-    item.className = "historyItem";
-    item.textContent = `${record.timestamp} ${record.source}: ${record.previous_review_status} -> ${record.new_review_status}; ${valueOrDash(record.previous_normalized_primary_genre)} -> ${valueOrDash(record.new_normalized_primary_genre)}`;
-    panel.appendChild(item);
   }
 }
 
@@ -149,4 +159,23 @@ function formatConfidence(value) {
     return String(value);
   }
   return numeric.toFixed(2);
+}
+
+function renderTableMessage(message) {
+  rowsEl.innerHTML = "";
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 6;
+  cell.textContent = message;
+  row.appendChild(cell);
+  rowsEl.appendChild(row);
+}
+
+async function responseErrorMessage(response, fallback) {
+  try {
+    const error = await response.json();
+    return error.error || fallback;
+  } catch (error) {
+    return fallback;
+  }
 }

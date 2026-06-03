@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from dj_library_prep.models import Track, utc_now_iso
 
+
+CURRENT_SCHEMA_VERSION = 1
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tracks (
@@ -121,9 +123,13 @@ def initialize(connection: sqlite3.Connection) -> None:
     connection.execute(REVIEW_HISTORY_SCHEMA)
     connection.execute(BEAT_TIMESTAMPS_SCHEMA)
     connection.execute(CUE_POINTS_SCHEMA)
-    _ensure_column(connection, "tracks", "bpm", "REAL")
-    _ensure_column(connection, "tracks", "bpm_confidence", "REAL NOT NULL DEFAULT 0.0")
+    _run_migrations(connection)
     connection.commit()
+
+
+def get_schema_version(connection: sqlite3.Connection) -> int:
+    row = connection.execute("PRAGMA user_version").fetchone()
+    return int(row[0])
 
 
 def save_tracks(connection: sqlite3.Connection, tracks: Iterable[Track]) -> int:
@@ -541,6 +547,29 @@ def _genre_label(primary: str | None, subgenre: str | None, tags: str | None) ->
     if tags:
         parts.append(f"tags={tags}")
     return " / ".join(parts)
+
+
+def _run_migrations(connection: sqlite3.Connection) -> None:
+    schema_version = get_schema_version(connection)
+    for target_version, migration in MIGRATIONS:
+        if schema_version < target_version:
+            migration(connection)
+            _set_schema_version(connection, target_version)
+            schema_version = target_version
+
+
+def _migrate_legacy_bpm_columns(connection: sqlite3.Connection) -> None:
+    _ensure_column(connection, "tracks", "bpm", "REAL")
+    _ensure_column(connection, "tracks", "bpm_confidence", "REAL NOT NULL DEFAULT 0.0")
+
+
+MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
+    (CURRENT_SCHEMA_VERSION, _migrate_legacy_bpm_columns),
+)
+
+
+def _set_schema_version(connection: sqlite3.Connection, version: int) -> None:
+    connection.execute(f"PRAGMA user_version = {version}")
 
 
 def _ensure_column(
