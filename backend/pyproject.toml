@@ -28,3 +28,7 @@ dj_library_prep = ["rules/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = [
+  "-p",
+  "no:cacheprovider"
+]

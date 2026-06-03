@@ -13,6 +13,7 @@ This is not a DJ performance app. It does not play tracks, edit Engine DJ or Rek
 - Export scanned tracks and proposed normalized tags to CSV.
 - Experimentally detect BPM and store results in SQLite.
 - Experimentally detect beat positions and propose cue points in SQLite.
+- Review scanned tracks in a minimal local desktop-friendly UI.
 - Mark broad or uncertain tags as `needs_review`.
 - Keep all metadata changes as proposals only.
 
@@ -73,6 +74,16 @@ python -m dj_library_prep.cli export-cues-csv --output exports/cue_points.csv
 ```
 
 Beat analysis stores beat timestamps separately from track metadata and proposes cue points for Intro, 8 Beats In, 16 Beats In, 32 Beats In, and 64 Beats In. Cue points include `cue_confidence` and `review_status`. Nothing is written to audio files or DJ software libraries.
+
+## Example Review UI
+
+```powershell
+python -m dj_library_prep.cli serve-ui --database djcuecraft.sqlite3
+```
+
+Open `http://127.0.0.1:8765` in a browser. The UI shows scanned tracks, original metadata, proposed normalized metadata, confidence scores, and review status controls. Edits are saved to SQLite only. It does not write anything back to audio files.
+
+Manual UI edits and CSV correction imports are recorded in the local `review_history` audit table. UI edits use `source = review_ui`; CSV imports use `source = csv_import`.
 
 ## Tests
 

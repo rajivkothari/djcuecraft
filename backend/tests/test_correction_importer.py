@@ -62,6 +62,7 @@ def test_import_corrections_updates_changed_genre_fields_and_history(tmp_path) -
     with database.connect(db_path) as connection:
         updated_track = database.list_tracks(connection)[0]
         history = database.list_correction_history(connection)
+        review_history = database.list_review_history(connection)
 
     assert updated_track["normalized_primary_genre"] == "R&B"
     assert updated_track["normalized_subgenre"] == "Soul"
@@ -73,6 +74,17 @@ def test_import_corrections_updates_changed_genre_fields_and_history(tmp_path) -
     assert history[0]["original_suggested_genre"] == "Hip-Hop / tags=[]"
     assert history[0]["corrected_genre"] == 'R&B / Soul / tags=["crate", "warmup"]'
     assert history[0]["source_file"] == str(csv_path)
+
+    assert len(review_history) == 1
+    assert review_history[0]["source"] == "csv_import"
+    assert review_history[0]["previous_normalized_primary_genre"] == "Hip-Hop"
+    assert review_history[0]["new_normalized_primary_genre"] == "R&B"
+    assert review_history[0]["previous_normalized_subgenre"] is None
+    assert review_history[0]["new_normalized_subgenre"] == "Soul"
+    assert review_history[0]["previous_dj_use_tags"] == "[]"
+    assert review_history[0]["new_dj_use_tags"] == '["crate", "warmup"]'
+    assert review_history[0]["previous_review_status"] == "needs_review"
+    assert review_history[0]["new_review_status"] == "approved"
 
 
 def test_import_corrections_leaves_unchanged_tracks_unapproved(tmp_path) -> None:
@@ -125,9 +137,11 @@ def test_import_corrections_leaves_unchanged_tracks_unapproved(tmp_path) -> None
     with database.connect(db_path) as connection:
         unchanged_track = database.list_tracks(connection)[0]
         history = database.list_correction_history(connection)
+        review_history = database.list_review_history(connection)
 
     assert unchanged_track["review_status"] == "needs_review"
     assert history == []
+    assert review_history == []
 
 
 def _write_corrected_csv(path, row: dict[str, object]) -> None:

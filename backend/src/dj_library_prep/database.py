@@ -51,6 +51,29 @@ CREATE TABLE IF NOT EXISTS correction_history (
 );
 """
 
+REVIEW_HISTORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS review_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER,
+    file_path TEXT NOT NULL,
+    previous_normalized_decade TEXT,
+    new_normalized_decade TEXT,
+    previous_normalized_primary_genre TEXT,
+    new_normalized_primary_genre TEXT,
+    previous_normalized_subgenre TEXT,
+    new_normalized_subgenre TEXT,
+    previous_dj_use_tags TEXT,
+    new_dj_use_tags TEXT,
+    previous_genre_confidence REAL,
+    new_genre_confidence REAL,
+    previous_review_status TEXT,
+    new_review_status TEXT,
+    timestamp TEXT NOT NULL,
+    source TEXT NOT NULL,
+    FOREIGN KEY(track_id) REFERENCES tracks(id)
+);
+"""
+
 BEAT_TIMESTAMPS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS beat_timestamps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,6 +118,7 @@ def connect(database_path: str | Path) -> sqlite3.Connection:
 def initialize(connection: sqlite3.Connection) -> None:
     connection.execute(SCHEMA)
     connection.execute(CORRECTION_HISTORY_SCHEMA)
+    connection.execute(REVIEW_HISTORY_SCHEMA)
     connection.execute(BEAT_TIMESTAMPS_SCHEMA)
     connection.execute(CUE_POINTS_SCHEMA)
     _ensure_column(connection, "tracks", "bpm", "REAL")
@@ -174,6 +198,119 @@ def list_tracks(connection: sqlite3.Connection) -> list[sqlite3.Row]:
             updated_at
         FROM tracks
         ORDER BY file_path
+        """
+    )
+    return list(cursor.fetchall())
+
+
+def update_track_review_fields(
+    connection: sqlite3.Connection,
+    track_id: int,
+    normalized_decade: str,
+    normalized_primary_genre: str | None,
+    normalized_subgenre: str | None,
+    dj_use_tags: str,
+    review_status: str,
+) -> sqlite3.Row | None:
+    connection.execute(
+        """
+        UPDATE tracks
+        SET
+            normalized_decade = ?,
+            normalized_primary_genre = ?,
+            normalized_subgenre = ?,
+            dj_use_tags = ?,
+            review_status = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            normalized_decade,
+            normalized_primary_genre,
+            normalized_subgenre,
+            dj_use_tags,
+            review_status,
+            utc_now_iso(),
+            track_id,
+        ),
+    )
+    return get_track_by_id(connection, track_id)
+
+
+def record_review_history(
+    connection: sqlite3.Connection,
+    previous_track: sqlite3.Row,
+    new_track: sqlite3.Row,
+    source: str,
+) -> bool:
+    if not _review_fields_changed(previous_track, new_track):
+        return False
+
+    connection.execute(
+        """
+        INSERT INTO review_history (
+            track_id,
+            file_path,
+            previous_normalized_decade,
+            new_normalized_decade,
+            previous_normalized_primary_genre,
+            new_normalized_primary_genre,
+            previous_normalized_subgenre,
+            new_normalized_subgenre,
+            previous_dj_use_tags,
+            new_dj_use_tags,
+            previous_genre_confidence,
+            new_genre_confidence,
+            previous_review_status,
+            new_review_status,
+            timestamp,
+            source
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_track["id"],
+            new_track["file_path"],
+            previous_track["normalized_decade"],
+            new_track["normalized_decade"],
+            previous_track["normalized_primary_genre"],
+            new_track["normalized_primary_genre"],
+            previous_track["normalized_subgenre"],
+            new_track["normalized_subgenre"],
+            previous_track["dj_use_tags"],
+            new_track["dj_use_tags"],
+            previous_track["genre_confidence"],
+            new_track["genre_confidence"],
+            previous_track["review_status"],
+            new_track["review_status"],
+            utc_now_iso(),
+            source,
+        ),
+    )
+    return True
+
+
+def list_review_history_by_track_id(
+    connection: sqlite3.Connection, track_id: int
+) -> list[sqlite3.Row]:
+    cursor = connection.execute(
+        """
+        SELECT *
+        FROM review_history
+        WHERE track_id = ?
+        ORDER BY timestamp DESC, id DESC
+        """,
+        (track_id,),
+    )
+    return list(cursor.fetchall())
+
+
+def list_review_history(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    cursor = connection.execute(
+        """
+        SELECT *
+        FROM review_history
+        ORDER BY timestamp DESC, id DESC
         """
     )
     return list(cursor.fetchall())
@@ -316,6 +453,7 @@ def get_track_by_file_path(
 def apply_genre_correction(
     connection: sqlite3.Connection,
     track: sqlite3.Row,
+    corrected_decade: str,
     corrected_primary_genre: str | None,
     corrected_subgenre: str | None,
     corrected_dj_use_tags: str,
@@ -332,6 +470,7 @@ def apply_genre_correction(
         SET
             normalized_primary_genre = ?,
             normalized_subgenre = ?,
+            normalized_decade = ?,
             dj_use_tags = ?,
             review_status = 'approved',
             updated_at = ?
@@ -340,6 +479,7 @@ def apply_genre_correction(
         (
             corrected_primary_genre,
             corrected_subgenre,
+            corrected_decade,
             corrected_dj_use_tags,
             timestamp,
             track["id"],
@@ -380,6 +520,9 @@ def apply_genre_correction(
             timestamp,
         ),
     )
+    updated = get_track_by_id(connection, track["id"])
+    if updated is not None:
+        record_review_history(connection, track, updated, "csv_import")
 
 
 def list_correction_history(connection: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -410,3 +553,22 @@ def _ensure_column(
         connection.execute(
             f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
         )
+
+
+def _review_fields_changed(previous_track: sqlite3.Row, new_track: sqlite3.Row) -> bool:
+    tracked_fields = (
+        "normalized_decade",
+        "normalized_primary_genre",
+        "normalized_subgenre",
+        "dj_use_tags",
+        "genre_confidence",
+        "review_status",
+    )
+    return any(
+        _comparable_value(previous_track[field]) != _comparable_value(new_track[field])
+        for field in tracked_fields
+    )
+
+
+def _comparable_value(value: object) -> str:
+    return "" if value is None else str(value)

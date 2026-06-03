@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DJ CueCraft Review</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>DJ CueCraft</h1>
+        <p id="summary">Loading tracks...</p>
+      </div>
+      <div class="toolbar">
+        <label>
+          Status
+          <select id="statusFilter">
+            <option value="">All</option>
+            <option value="needs_review">Needs review</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+        <button id="refreshButton" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="tableShell">
+        <table>
+          <thead>
+            <tr>
+              <th>Track</th>
+              <th>Original Metadata</th>
+              <th>Proposed Metadata</th>
+              <th>Confidence</th>
+              <th>Status</th>
+              <th>Save</th>
+            </tr>
+          </thead>
+          <tbody id="trackRows"></tbody>
+        </table>
+      </div>
+    </main>
+
+    <template id="trackRowTemplate">
+      <tr>
+        <td class="trackCell">
+          <strong data-field="file_name"></strong>
+          <span data-field="file_path"></span>
+        </td>
+        <td>
+          <dl class="metadataList">
+            <div><dt>Artist</dt><dd data-field="artist"></dd></div>
+            <div><dt>Title</dt><dd data-field="title"></dd></div>
+            <div><dt>Album</dt><dd data-field="album"></dd></div>
+            <div><dt>Year</dt><dd data-field="year"></dd></div>
+            <div><dt>Genre</dt><dd data-field="original_genre"></dd></div>
+          </dl>
+          <div class="warnings" data-field="missing_fields"></div>
+        </td>
+        <td class="editGrid">
+          <label>Decade <input data-input="normalized_decade" /></label>
+          <label>Primary <input data-input="normalized_primary_genre" /></label>
+          <label>Subgenre <input data-input="normalized_subgenre" /></label>
+          <label>Tags <input data-input="dj_use_tags" /></label>
+        </td>
+        <td>
+          <dl class="metadataList compact">
+            <div><dt>Metadata</dt><dd data-field="metadata_confidence"></dd></div>
+            <div><dt>Genre</dt><dd data-field="genre_confidence"></dd></div>
+            <div><dt>BPM</dt><dd data-field="bpm_confidence"></dd></div>
+          </dl>
+        </td>
+        <td>
+          <select data-input="review_status">
+            <option value="needs_review">needs_review</option>
+            <option value="pending">pending</option>
+            <option value="approved">approved</option>
+            <option value="rejected">rejected</option>
+          </select>
+        </td>
+        <td>
+          <button data-action="save" type="button">Save</button>
+          <button class="secondaryButton" data-action="history" type="button">History</button>
+          <span class="rowState" data-field="row_state"></span>
+          <div class="historyPanel" data-field="history_panel"></div>
+        </td>
+      </tr>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -10,6 +10,7 @@ from dj_library_prep import database
 
 
 GENRE_FIELDS = (
+    "normalized_decade",
     "normalized_primary_genre",
     "normalized_subgenre",
     "dj_use_tags",
@@ -54,6 +55,7 @@ def import_corrections(
                 database.apply_genre_correction(
                     connection=connection,
                     track=track,
+                    corrected_decade=corrected["normalized_decade"] or "Unknown",
                     corrected_primary_genre=corrected["normalized_primary_genre"],
                     corrected_subgenre=corrected["normalized_subgenre"],
                     corrected_dj_use_tags=corrected["dj_use_tags"],
@@ -97,6 +99,7 @@ def _find_track(connection: Any, row: dict[str, str]) -> Any:
 
 def _corrected_values(row: dict[str, str]) -> dict[str, str | None]:
     return {
+        "normalized_decade": row.get("normalized_decade", "Unknown").strip() or "Unknown",
         "normalized_primary_genre": _blank_to_none(row.get("normalized_primary_genre")),
         "normalized_subgenre": _blank_to_none(row.get("normalized_subgenre")),
         "dj_use_tags": _tags_to_json(row.get("dj_use_tags")),

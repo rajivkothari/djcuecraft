@@ -11,9 +11,11 @@
 - Manual correction import with correction history.
 - Experimental BPM detection stored in SQLite.
 - Experimental beat timestamp storage and cue point proposals.
+- Minimal local review UI.
 
 ## Phase 2
 
+- Desktop wrapper exploration with Tauri or Electron.
 - Safer metadata write-back with backups.
 
 ## Phase 3

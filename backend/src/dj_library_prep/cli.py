@@ -11,6 +11,7 @@ from dj_library_prep.correction_importer import CorrectionImportSummary, import_
 from dj_library_prep.cue_exporter import export_cue_points_to_csv
 from dj_library_prep.csv_exporter import export_tracks_to_csv
 from dj_library_prep.genre_normalizer import normalize_track_fields
+from dj_library_prep.local_api import serve_ui
 from dj_library_prep.metadata import read_track_metadata
 from dj_library_prep.models import ReviewStatus, Track
 from dj_library_prep.scanner import scan_audio_files
@@ -132,6 +133,18 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="CSV output path",
     )
+
+    ui_parser = subparsers.add_parser(
+        "serve-ui",
+        help="Run the local track review UI",
+    )
+    ui_parser.add_argument(
+        "--database",
+        default="djcuecraft.sqlite3",
+        help="SQLite database path. Defaults to djcuecraft.sqlite3",
+    )
+    ui_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
+    ui_parser.add_argument("--port", type=int, default=8765, help="Bind port")
     return parser
 
 
@@ -169,6 +182,10 @@ def main(argv: list[str] | None = None) -> int:
         exported_count = export_cue_points_to_csv(args.database, args.output)
         print(f"Exported {exported_count} cue points to {args.output}")
         print("No audio files or DJ software libraries were modified.")
+        return 0
+
+    if args.command == "serve-ui":
+        serve_ui(args.database, args.host, args.port)
         return 0
 
     parser.error(f"Unknown command: {args.command}")
