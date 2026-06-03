@@ -1,0 +1,40 @@
+{
+  "rules": [
+    {
+      "id": "filename-clean",
+      "field": "file_name",
+      "match_type": "contains",
+      "values": ["clean"],
+      "dj_use_tags": ["clean"],
+      "confidence": 0.7,
+      "review_status": "pending"
+    },
+    {
+      "id": "filename-dirty",
+      "field": "file_name",
+      "match_type": "contains",
+      "values": ["dirty", "explicit"],
+      "dj_use_tags": ["explicit"],
+      "confidence": 0.7,
+      "review_status": "pending"
+    },
+    {
+      "id": "keyword-intro",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["intro", "hype intro"],
+      "dj_use_tags": ["intro"],
+      "confidence": 0.65,
+      "review_status": "pending"
+    },
+    {
+      "id": "keyword-remix",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["remix", "refix", "edit"],
+      "dj_use_tags": ["remix-edit"],
+      "confidence": 0.62,
+      "review_status": "pending"
+    }
+  ]
+}

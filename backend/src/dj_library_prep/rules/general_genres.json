@@ -1,0 +1,59 @@
+{
+  "rules": [
+    {
+      "id": "genre-hip-hop",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Hip-Hop/Rap", "Hip-Hop", "Hip Hop", "Rap"],
+      "normalized_primary_genre": "Hip-Hop",
+      "confidence": 0.92,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-r-and-b",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["R&B/Soul", "R&B", "Soul"],
+      "normalized_primary_genre": "R&B",
+      "confidence": 0.9,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-disco",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Disco"],
+      "normalized_primary_genre": "Disco",
+      "confidence": 0.92,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-funk",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Funk"],
+      "normalized_primary_genre": "Funk",
+      "confidence": 0.92,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-broad-world",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["World", "Soundtrack", "International"],
+      "confidence": 0.25,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "artist-sean-paul-dancehall",
+      "field": "artist",
+      "match_type": "contains",
+      "values": ["Sean Paul"],
+      "normalized_primary_genre": "Reggae-Dancehall",
+      "normalized_subgenre": "Dancehall",
+      "dj_use_tags": ["dancehall"],
+      "confidence": 0.72,
+      "review_status": "needs_review"
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "rules": [
+    {
+      "id": "genre-broad-latin",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Latin"],
+      "normalized_primary_genre": "Latin",
+      "confidence": 0.42,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-reggaeton",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Reggaeton", "Reggaet\u00f3n"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Reggaeton",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.82,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-salsa",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Salsa"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Salsa",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.84,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-bachata",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Bachata"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Bachata",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.84,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-cumbia",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Cumbia"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Cumbia",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.84,
+      "review_status": "pending"
+    },
+    {
+      "id": "keyword-dembow",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["Dembow"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Dembow",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.66,
+      "review_status": "needs_review"
+    }
+  ]
+}

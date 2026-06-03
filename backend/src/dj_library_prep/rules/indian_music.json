@@ -1,0 +1,89 @@
+{
+  "rules": [
+    {
+      "id": "genre-broad-indian",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Indian"],
+      "normalized_primary_genre": "Indian",
+      "confidence": 0.42,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-bollywood",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Bollywood"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Bollywood",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.78,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-hindi",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Hindi"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Bollywood",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.68,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-bhangra",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Bhangra"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Punjabi-Bhangra",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.78,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-punjabi",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Punjabi"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Punjabi-Bhangra",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.7,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-tamil",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Tamil"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Tamil",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.72,
+      "review_status": "pending"
+    },
+    {
+      "id": "filename-bollywood",
+      "field": "file_name",
+      "match_type": "contains",
+      "values": ["bollywood"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Bollywood",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.62,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "keyword-desi",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["desi"],
+      "normalized_primary_genre": "Indian",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.55,
+      "review_status": "needs_review"
+    }
+  ]
+}
