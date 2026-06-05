@@ -18,6 +18,7 @@ Open `http://127.0.0.1:8765`.
 - Confidence scores
 - Review status
 - Missing metadata warnings
+- Stored cue point proposals
 
 ## What It Can Edit
 
@@ -26,6 +27,12 @@ Open `http://127.0.0.1:8765`.
 - `normalized_subgenre`
 - `dj_use_tags`
 - `review_status`
+
+## Auto Cue Setup
+
+The UI can run beat analysis for a local music folder and store cue proposals in SQLite. Choose a preset or enter custom cue rows with `LABEL=BEAT_INDEX`.
+
+Auto-cue analysis inserts missing cue labels only. Existing cue points with matching labels are preserved.
 
 ## Safety
 

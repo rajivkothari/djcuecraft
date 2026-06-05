@@ -408,6 +408,55 @@ def replace_cue_points(
     return len(cue_points)
 
 
+def insert_missing_cue_points(
+    connection: sqlite3.Connection,
+    track_id: int | None,
+    file_path: str,
+    cue_points: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    existing_labels = _existing_cue_labels(connection, track_id, file_path)
+    missing_cue_points = [
+        cue_point
+        for cue_point in cue_points
+        if str(cue_point["cue_label"]) not in existing_labels
+    ]
+    if not missing_cue_points:
+        return []
+
+    timestamp = utc_now_iso()
+    connection.executemany(
+        """
+        INSERT INTO cue_points (
+            track_id,
+            file_path,
+            cue_label,
+            beat_index,
+            timestamp_seconds,
+            cue_confidence,
+            review_status,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                track_id,
+                file_path,
+                cue_point["cue_label"],
+                cue_point["beat_index"],
+                cue_point["timestamp_seconds"],
+                cue_point["cue_confidence"],
+                cue_point["review_status"],
+                timestamp,
+                timestamp,
+            )
+            for cue_point in missing_cue_points
+        ],
+    )
+    return missing_cue_points
+
+
 def list_cue_points(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     cursor = connection.execute(
         """
@@ -431,6 +480,24 @@ def list_cue_points(connection: sqlite3.Connection) -> list[sqlite3.Row]:
         """
     )
     return list(cursor.fetchall())
+
+
+def _existing_cue_labels(
+    connection: sqlite3.Connection,
+    track_id: int | None,
+    file_path: str,
+) -> set[str]:
+    if track_id is not None:
+        cursor = connection.execute(
+            "SELECT cue_label FROM cue_points WHERE track_id = ?",
+            (track_id,),
+        )
+    else:
+        cursor = connection.execute(
+            "SELECT cue_label FROM cue_points WHERE file_path = ?",
+            (file_path,),
+        )
+    return {str(row["cue_label"]) for row in cursor.fetchall()}
 
 
 def list_beat_timestamps(connection: sqlite3.Connection) -> list[sqlite3.Row]:

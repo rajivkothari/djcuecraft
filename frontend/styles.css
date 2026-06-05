@@ -60,7 +60,8 @@ label {
 
 button,
 input,
-select {
+select,
+textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   font: inherit;
@@ -89,7 +90,8 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   background: #fff;
   color: var(--text);
   padding: 5px 8px;
@@ -97,13 +99,59 @@ select {
 
 input:focus,
 select:focus,
+textarea:focus,
 button:focus {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
 main {
+  display: grid;
+  gap: 14px;
   padding: 14px;
+}
+
+textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.toolPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.panelHeader {
+  align-items: end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0 0 4px;
+}
+
+.buttonRow {
+  align-items: end;
+  display: flex;
+  gap: 8px;
+}
+
+.cueControls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(260px, 2fr) minmax(140px, 0.6fr) minmax(260px, 2fr);
+}
+
+.wideField {
+  min-width: 0;
 }
 
 .tableShell {
@@ -119,6 +167,21 @@ table {
   table-layout: fixed;
   width: 100%;
 }
+
+.cueShell {
+  max-height: 340px;
+}
+
+.cueTable {
+  min-width: 860px;
+}
+
+.cueTable th:nth-child(1) { width: 260px; }
+.cueTable th:nth-child(2) { width: 170px; }
+.cueTable th:nth-child(3) { width: 85px; }
+.cueTable th:nth-child(4) { width: 110px; }
+.cueTable th:nth-child(5) { width: 120px; }
+.cueTable th:nth-child(6) { width: 130px; }
 
 th,
 td {
@@ -229,6 +292,14 @@ dd {
     align-items: stretch;
     display: grid;
     grid-template-columns: 1fr auto;
+  }
+
+  .panelHeader,
+  .buttonRow,
+  .cueControls {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   main {

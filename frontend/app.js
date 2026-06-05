@@ -3,6 +3,13 @@ const template = document.querySelector("#trackRowTemplate");
 const summaryEl = document.querySelector("#summary");
 const statusFilter = document.querySelector("#statusFilter");
 const refreshButton = document.querySelector("#refreshButton");
+const cueRowsEl = document.querySelector("#cueRows");
+const cueStateEl = document.querySelector("#cueState");
+const cueFolderPathInput = document.querySelector("#cueFolderPath");
+const cuePresetSelect = document.querySelector("#cuePreset");
+const cueTemplateRowsInput = document.querySelector("#cueTemplateRows");
+const analyzeCueButton = document.querySelector("#analyzeCueButton");
+const refreshCueButton = document.querySelector("#refreshCueButton");
 
 const editableFields = [
   "normalized_decade",
@@ -14,8 +21,11 @@ const editableFields = [
 
 refreshButton.addEventListener("click", loadTracks);
 statusFilter.addEventListener("change", loadTracks);
+analyzeCueButton.addEventListener("click", analyzeCues);
+refreshCueButton.addEventListener("click", loadCuePoints);
 
 loadTracks();
+loadCuePoints();
 
 async function loadTracks() {
   rowsEl.innerHTML = "";
@@ -76,6 +86,85 @@ function renderTrackRow(track) {
     loadHistory(row);
   });
   return row;
+}
+
+async function analyzeCues() {
+  const folder = cueFolderPathInput.value.trim();
+  const cues = cueTemplateRowsInput.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  analyzeCueButton.disabled = true;
+  cueStateEl.textContent = "Analyzing...";
+
+  try {
+    const response = await fetch("/api/analyze-beats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folder,
+        cue_preset: cuePresetSelect.value,
+        cues,
+      }),
+    });
+
+    if (!response.ok) {
+      cueStateEl.textContent = await responseErrorMessage(response, "Analyze failed");
+      return;
+    }
+
+    const payload = await response.json();
+    const summary = payload.summary || {};
+    renderCuePoints(payload.cue_points || []);
+    cueStateEl.textContent = `${summary.inserted_cue_points || 0} cues inserted`;
+    loadTracks();
+  } catch (error) {
+    cueStateEl.textContent = "Analyze failed";
+  } finally {
+    analyzeCueButton.disabled = false;
+  }
+}
+
+async function loadCuePoints() {
+  cueStateEl.textContent = "Loading cues...";
+  try {
+    const response = await fetch("/api/cue-points");
+    if (!response.ok) {
+      throw new Error("Cue load failed");
+    }
+    const payload = await response.json();
+    renderCuePoints(payload.cue_points || []);
+    cueStateEl.textContent = `${(payload.cue_points || []).length} cues`;
+  } catch (error) {
+    cueStateEl.textContent = "Unable to load cues";
+    renderCueTableMessage("Unable to load cues");
+  }
+}
+
+function renderCuePoints(cuePoints) {
+  cueRowsEl.innerHTML = "";
+  if (cuePoints.length === 0) {
+    renderCueTableMessage("No cues");
+    return;
+  }
+
+  for (const cuePoint of cuePoints) {
+    const row = document.createElement("tr");
+    row.appendChild(cueCell(cuePoint.file_name || cuePoint.file_path));
+    row.appendChild(cueCell(cuePoint.cue_label));
+    row.appendChild(cueCell(cuePoint.beat_index));
+    row.appendChild(cueCell(formatSeconds(cuePoint.timestamp_seconds)));
+    row.appendChild(cueCell(formatConfidence(cuePoint.cue_confidence)));
+    row.appendChild(cueCell(cuePoint.review_status));
+    cueRowsEl.appendChild(row);
+  }
+}
+
+function cueCell(value) {
+  const cell = document.createElement("td");
+  cell.textContent = valueOrDash(value);
+  return cell;
 }
 
 async function saveTrack(row) {
@@ -169,6 +258,27 @@ function renderTableMessage(message) {
   cell.textContent = message;
   row.appendChild(cell);
   rowsEl.appendChild(row);
+}
+
+function renderCueTableMessage(message) {
+  cueRowsEl.innerHTML = "";
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 6;
+  cell.textContent = message;
+  row.appendChild(cell);
+  cueRowsEl.appendChild(row);
+}
+
+function formatSeconds(value) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) {
+    return String(value);
+  }
+  return `${numeric.toFixed(3)}s`;
 }
 
 async function responseErrorMessage(response, fallback) {

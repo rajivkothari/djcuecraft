@@ -77,13 +77,26 @@ python -m dj_library_prep.cli export-cues-csv --output exports/cue_points.csv
 
 Beat analysis stores beat timestamps separately from track metadata and proposes cue points for Intro, 8 Beats In, 16 Beats In, 32 Beats In, and 64 Beats In. Cue points include `cue_confidence` and `review_status`. Nothing is written to audio files or DJ software libraries.
 
+Auto-cue setup can use a preset or custom cue template:
+
+```powershell
+python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue-preset phrase
+python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue "Load=0" --cue "Drop Prep=32"
+```
+
+Auto-cue analysis fills in missing cue labels only. Existing cue points with matching labels are preserved and are not overwritten.
+
 ## Example Review UI
+
+Double-click `launch-ui.bat`, or run:
 
 ```powershell
 python -m dj_library_prep.cli serve-ui --database djcuecraft.sqlite3
 ```
 
 Open `http://127.0.0.1:8765` in a browser. The UI shows scanned tracks, original metadata, proposed normalized metadata, confidence scores, and review status controls. Edits are saved to SQLite only. It does not write anything back to audio files.
+
+The UI also includes Auto Cues controls for running beat analysis from the browser and reviewing stored cue proposals.
 
 Manual UI edits and CSV correction imports are recorded in the local `review_history` audit table. UI edits use `source = review_ui`; CSV imports use `source = csv_import`.
 

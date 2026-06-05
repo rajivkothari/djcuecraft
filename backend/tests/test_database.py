@@ -1,6 +1,7 @@
 import sqlite3
 
 from dj_library_prep import database
+from dj_library_prep.models import Track
 
 
 def test_initialize_sets_current_schema_version(tmp_path) -> None:
@@ -35,6 +36,66 @@ def test_initialize_migrates_legacy_tracks_table_to_current_schema(tmp_path) -> 
     assert "beat_timestamps" in tables
     assert "cue_points" in tables
     assert schema_version == database.CURRENT_SCHEMA_VERSION
+
+
+def test_insert_missing_cue_points_preserves_existing_cues(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+    )
+
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved_track = database.list_tracks(connection)[0]
+        database.replace_cue_points(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            cue_points=[
+                {
+                    "cue_label": "Intro",
+                    "beat_index": 2,
+                    "timestamp_seconds": 0.5,
+                    "cue_confidence": 0.5,
+                    "review_status": "approved",
+                }
+            ],
+        )
+
+        inserted_cues = database.insert_missing_cue_points(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            cue_points=[
+                {
+                    "cue_label": "Intro",
+                    "beat_index": 0,
+                    "timestamp_seconds": 0.0,
+                    "cue_confidence": 0.9,
+                    "review_status": "pending",
+                },
+                {
+                    "cue_label": "Drop Prep",
+                    "beat_index": 32,
+                    "timestamp_seconds": 16.0,
+                    "cue_confidence": 0.9,
+                    "review_status": "pending",
+                },
+            ],
+        )
+        connection.commit()
+
+        cues = database.list_cue_points(connection)
+
+    assert [cue["cue_label"] for cue in inserted_cues] == ["Drop Prep"]
+    assert [cue["cue_label"] for cue in cues] == ["Intro", "Drop Prep"]
+    assert cues[0]["beat_index"] == 2
+    assert cues[0]["timestamp_seconds"] == 0.5
+    assert cues[0]["cue_confidence"] == 0.5
+    assert cues[0]["review_status"] == "approved"
+    assert cues[1]["beat_index"] == 32
 
 
 def _create_legacy_tracks_table(db_path) -> None:

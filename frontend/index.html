@@ -28,6 +28,54 @@
     </header>
 
     <main>
+      <section class="toolPanel" aria-labelledby="autoCueTitle">
+        <div class="panelHeader">
+          <div>
+            <h2 id="autoCueTitle">Auto Cues</h2>
+            <p id="cueState">Idle</p>
+          </div>
+          <div class="buttonRow">
+            <button id="analyzeCueButton" type="button">Analyze</button>
+            <button id="refreshCueButton" class="secondaryButton" type="button">Refresh Cues</button>
+          </div>
+        </div>
+
+        <div class="cueControls">
+          <label class="wideField">
+            Music folder
+            <input id="cueFolderPath" autocomplete="off" />
+          </label>
+          <label>
+            Preset
+            <select id="cuePreset">
+              <option value="starter">starter</option>
+              <option value="phrase">phrase</option>
+              <option value="extended">extended</option>
+            </select>
+          </label>
+          <label class="wideField">
+            Custom cues
+            <textarea id="cueTemplateRows" rows="3"></textarea>
+          </label>
+        </div>
+
+        <div class="tableShell cueShell">
+          <table class="cueTable">
+            <thead>
+              <tr>
+                <th>Track</th>
+                <th>Cue</th>
+                <th>Beat</th>
+                <th>Time</th>
+                <th>Confidence</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="cueRows"></tbody>
+          </table>
+        </div>
+      </section>
+
       <div class="tableShell">
         <table>
           <thead>

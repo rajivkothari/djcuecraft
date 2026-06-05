@@ -5,6 +5,15 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from dj_library_prep import database
+from dj_library_prep.beat_analyzer import (
+    CUE_PRESETS,
+    DEFAULT_CUE_PRESET,
+    CueTemplate,
+    analyze_beats_for_folder,
+    cue_template_for_preset,
+    parse_cue_template,
+)
 from dj_library_prep.review_service import (
     list_review_history,
     list_review_tracks,
@@ -41,6 +50,17 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                 tracks = list_review_tracks(database_path, review_status=status)
                 self._write_json({"tracks": tracks})
                 return
+            if parsed.path == "/api/cue-points":
+                self._write_json({"cue_points": _list_cue_points(database_path)})
+                return
+            if parsed.path == "/api/cue-presets":
+                self._write_json(
+                    {
+                        "presets": sorted(CUE_PRESETS),
+                        "default_preset": DEFAULT_CUE_PRESET,
+                    }
+                )
+                return
             parts = parsed.path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["api", "tracks"] and parts[3] == "history":
                 try:
@@ -52,6 +72,42 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                 self._write_json({"history": history})
                 return
             super().do_GET()
+
+        def do_POST(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path == "/api/analyze-beats":
+                try:
+                    payload = self._read_json()
+                    folder = str(payload.get("folder", "")).strip()
+                    if not folder:
+                        raise ValueError("Music folder is required.")
+
+                    cue_template = _cue_template_from_payload(payload)
+                    summary = analyze_beats_for_folder(
+                        folder,
+                        database_path,
+                        cue_template,
+                    )
+                except (RuntimeError, ValueError, OSError, json.JSONDecodeError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+
+                self._write_json(
+                    {
+                        "summary": {
+                            "total_files": summary.total_files,
+                            "analyzed_tracks": summary.analyzed_tracks,
+                            "stored_beats": summary.stored_beats,
+                            "inserted_cue_points": summary.proposed_cue_points,
+                            "cue_points_needing_review": summary.cue_points_needing_review,
+                            "failed_tracks": summary.failed_tracks,
+                        },
+                        "cue_points": _list_cue_points(database_path),
+                    }
+                )
+                return
+
+            self._write_json({"error": "Not found"}, status=404)
 
         def do_PATCH(self) -> None:
             parsed = urlparse(self.path)
@@ -88,3 +144,17 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
             return
 
     return ReviewRequestHandler
+
+
+def _cue_template_from_payload(payload: dict) -> tuple[CueTemplate, ...]:
+    cue_specs = [str(cue) for cue in payload.get("cues", []) if str(cue).strip()]
+    if cue_specs:
+        return parse_cue_template(cue_specs)
+
+    preset_name = str(payload.get("cue_preset", DEFAULT_CUE_PRESET) or DEFAULT_CUE_PRESET)
+    return cue_template_for_preset(preset_name)
+
+
+def _list_cue_points(database_path: Path) -> list[dict]:
+    with database.connect(database_path) as connection:
+        return [dict(row) for row in database.list_cue_points(connection)]

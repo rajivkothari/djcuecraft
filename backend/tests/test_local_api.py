@@ -4,7 +4,8 @@ from http.server import ThreadingHTTPServer
 import json
 from threading import Thread
 
-from dj_library_prep import database
+from dj_library_prep import database, local_api
+from dj_library_prep.beat_analyzer import BeatCueAnalysisSummary, CueTemplate
 from dj_library_prep.local_api import _handler_factory
 from dj_library_prep.models import ReviewStatus, Track
 
@@ -82,6 +83,97 @@ def test_patch_track_endpoint_updates_review_fields_and_history(tmp_path) -> Non
     assert len(history_payload["history"]) == 1
     assert history_payload["history"][0]["source"] == "review_ui"
     assert history_payload["history"][0]["new_review_status"] == "approved"
+
+
+def test_cue_points_endpoint_returns_stored_cues(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+            artist="Artist",
+            title="Song",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.insert_missing_cue_points(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            cue_points=[
+                {
+                    "cue_label": "Load",
+                    "beat_index": 0,
+                    "timestamp_seconds": 0.0,
+                    "cue_confidence": 0.8,
+                    "review_status": "pending",
+                }
+            ],
+        )
+        connection.commit()
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "GET", "/api/cue-points")
+
+    assert status == 200
+    assert payload["cue_points"][0]["file_name"] == "song.mp3"
+    assert payload["cue_points"][0]["artist"] == "Artist"
+    assert payload["cue_points"][0]["cue_label"] == "Load"
+
+
+def test_analyze_beats_endpoint_passes_ui_cue_template(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    captured = {}
+
+    def fake_analyze_beats_for_folder(folder, database_path, cue_template):
+        captured["folder"] = folder
+        captured["database_path"] = database_path
+        captured["cue_template"] = cue_template
+        return BeatCueAnalysisSummary(
+            total_files=1,
+            analyzed_tracks=1,
+            stored_beats=40,
+            proposed_cue_points=2,
+            cue_points_needing_review=0,
+            failed_tracks=0,
+        )
+
+    monkeypatch.setattr(
+        local_api,
+        "analyze_beats_for_folder",
+        fake_analyze_beats_for_folder,
+    )
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(
+            server,
+            "POST",
+            "/api/analyze-beats",
+            {
+                "folder": "C:/Music",
+                "cue_preset": "starter",
+                "cues": ["Load=0", "Drop Prep=32"],
+            },
+        )
+
+    assert status == 200
+    assert captured == {
+        "folder": "C:/Music",
+        "database_path": db_path,
+        "cue_template": (
+            CueTemplate("Load", 0),
+            CueTemplate("Drop Prep", 32),
+        ),
+    }
+    assert payload["summary"]["inserted_cue_points"] == 2
+    assert payload["summary"]["stored_beats"] == 40
 
 
 @contextmanager

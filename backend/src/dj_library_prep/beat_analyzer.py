@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,12 +12,48 @@ from dj_library_prep.scanner import scan_audio_files
 
 
 LOW_CUE_CONFIDENCE_THRESHOLD = 0.6
-CUE_BEAT_OFFSETS = (
-    ("Intro", 0),
-    ("8 Beats In", 8),
-    ("16 Beats In", 16),
-    ("32 Beats In", 32),
-    ("64 Beats In", 64),
+DEFAULT_CUE_PRESET = "starter"
+
+
+@dataclass(frozen=True, slots=True)
+class CueTemplate:
+    cue_label: str
+    beat_index: int
+
+
+CUE_PRESETS: dict[str, tuple[CueTemplate, ...]] = {
+    "starter": (
+        CueTemplate("Intro", 0),
+        CueTemplate("8 Beats In", 8),
+        CueTemplate("16 Beats In", 16),
+        CueTemplate("32 Beats In", 32),
+        CueTemplate("64 Beats In", 64),
+    ),
+    "phrase": (
+        CueTemplate("Intro", 0),
+        CueTemplate("Phrase 1", 32),
+        CueTemplate("Phrase 2", 64),
+        CueTemplate("Phrase 3", 96),
+        CueTemplate("Phrase 4", 128),
+    ),
+    "extended": (
+        CueTemplate("Intro", 0),
+        CueTemplate("8 Beats In", 8),
+        CueTemplate("16 Beats In", 16),
+        CueTemplate("32 Beats In", 32),
+        CueTemplate("64 Beats In", 64),
+        CueTemplate("96 Beats In", 96),
+        CueTemplate("128 Beats In", 128),
+    ),
+}
+
+CueTemplateInput = CueTemplate | tuple[str, int]
+CueTemplateCollection = Iterable[CueTemplateInput]
+
+
+CUE_TEMPLATE_HELP = (
+    "Cue template entries use LABEL=BEAT_INDEX, for example "
+    "'Drop Prep=32'. Repeat --cue to define multiple cues."
 )
 
 
@@ -39,6 +76,7 @@ class BeatCueAnalysisSummary:
 def analyze_beats_for_folder(
     folder: str | Path,
     database_path: str | Path = "djcuecraft.sqlite3",
+    cue_template: CueTemplateCollection | None = None,
 ) -> BeatCueAnalysisSummary:
     audio_files = scan_audio_files(folder)
     analyzed_tracks = 0
@@ -54,7 +92,11 @@ def analyze_beats_for_folder(
             if not result.beat_timestamps:
                 failed_tracks += 1
 
-            cues = propose_cue_points(result.beat_timestamps, result.beat_confidence)
+            cues = propose_cue_points(
+                result.beat_timestamps,
+                result.beat_confidence,
+                cue_template=cue_template,
+            )
             stored_beats += database.replace_beat_timestamps(
                 connection=connection,
                 track_id=track.id,
@@ -62,14 +104,17 @@ def analyze_beats_for_folder(
                 beat_timestamps=result.beat_timestamps,
                 beat_confidence=result.beat_confidence,
             )
-            proposed_cue_points += database.replace_cue_points(
+            inserted_cues = database.insert_missing_cue_points(
                 connection=connection,
                 track_id=track.id,
                 file_path=track.file_path,
                 cue_points=cues,
             )
+            proposed_cue_points += len(inserted_cues)
             cue_points_needing_review += sum(
-                1 for cue in cues if cue["review_status"] == ReviewStatus.NEEDS_REVIEW.value
+                1
+                for cue in inserted_cues
+                if cue["review_status"] == ReviewStatus.NEEDS_REVIEW.value
             )
             analyzed_tracks += 1
         connection.commit()
@@ -115,6 +160,7 @@ def detect_beat_timestamps(path: str | Path) -> BeatAnalysisResult:
 def propose_cue_points(
     beat_timestamps: list[float],
     beat_confidence: float,
+    cue_template: CueTemplateCollection | None = None,
 ) -> list[dict[str, object]]:
     review_status = (
         ReviewStatus.NEEDS_REVIEW
@@ -122,19 +168,78 @@ def propose_cue_points(
         else ReviewStatus.PENDING
     )
     cue_points: list[dict[str, object]] = []
-    for label, beat_index in CUE_BEAT_OFFSETS:
-        if beat_index >= len(beat_timestamps):
+    for cue_template_item in _normalized_cue_template(cue_template):
+        if cue_template_item.beat_index >= len(beat_timestamps):
             continue
         cue_points.append(
             {
-                "cue_label": label,
-                "beat_index": beat_index,
-                "timestamp_seconds": beat_timestamps[beat_index],
+                "cue_label": cue_template_item.cue_label,
+                "beat_index": cue_template_item.beat_index,
+                "timestamp_seconds": beat_timestamps[cue_template_item.beat_index],
                 "cue_confidence": beat_confidence,
                 "review_status": review_status.value,
             }
         )
     return cue_points
+
+
+def cue_template_for_preset(preset_name: str) -> tuple[CueTemplate, ...]:
+    try:
+        return CUE_PRESETS[preset_name]
+    except KeyError as exc:
+        available = ", ".join(sorted(CUE_PRESETS))
+        raise ValueError(
+            f"Unknown cue preset: {preset_name}. Available presets: {available}"
+        ) from exc
+
+
+def parse_cue_template(cue_specs: Iterable[str]) -> tuple[CueTemplate, ...]:
+    cues = []
+    for cue_spec in cue_specs:
+        if "=" not in cue_spec:
+            raise ValueError(f"Invalid cue template entry: {cue_spec}. {CUE_TEMPLATE_HELP}")
+        label, beat_index = cue_spec.split("=", 1)
+        label = label.strip()
+        beat_index = beat_index.strip()
+        if not label:
+            raise ValueError("Cue labels cannot be blank.")
+        try:
+            cues.append(CueTemplate(label, int(beat_index)))
+        except ValueError as exc:
+            raise ValueError(
+                f"Cue beat index must be an integer: {cue_spec}"
+            ) from exc
+
+    return _normalized_cue_template(cues)
+
+
+def _normalized_cue_template(
+    cue_template: CueTemplateCollection | None,
+) -> tuple[CueTemplate, ...]:
+    raw_template = (
+        cue_template
+        if cue_template is not None
+        else cue_template_for_preset(DEFAULT_CUE_PRESET)
+    )
+    normalized = tuple(_coerce_cue_template_item(item) for item in raw_template)
+    if not normalized:
+        raise ValueError("Cue template must include at least one cue.")
+
+    labels = set()
+    for cue in normalized:
+        if cue.beat_index < 0:
+            raise ValueError(f"Cue beat index cannot be negative: {cue.cue_label}")
+        if cue.cue_label in labels:
+            raise ValueError(f"Duplicate cue label: {cue.cue_label}")
+        labels.add(cue.cue_label)
+    return normalized
+
+
+def _coerce_cue_template_item(item: CueTemplateInput) -> CueTemplate:
+    if isinstance(item, CueTemplate):
+        return item
+    label, beat_index = item
+    return CueTemplate(str(label), int(beat_index))
 
 
 def _estimate_beat_confidence(onset_envelope: Any, beat_frames: Any) -> float:

@@ -5,7 +5,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dj_library_prep import database
-from dj_library_prep.beat_analyzer import BeatCueAnalysisSummary, analyze_beats_for_folder
+from dj_library_prep.beat_analyzer import (
+    CUE_PRESETS,
+    CUE_TEMPLATE_HELP,
+    DEFAULT_CUE_PRESET,
+    BeatCueAnalysisSummary,
+    analyze_beats_for_folder,
+    cue_template_for_preset,
+    parse_cue_template,
+)
 from dj_library_prep.bpm_analyzer import BpmAnalysisSummary, analyze_bpm_for_folder
 from dj_library_prep.correction_importer import CorrectionImportSummary, import_corrections
 from dj_library_prep.cue_exporter import export_cue_points_to_csv
@@ -118,6 +126,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="djcuecraft.sqlite3",
         help="SQLite database path. Defaults to djcuecraft.sqlite3",
     )
+    beat_parser.add_argument(
+        "--cue-preset",
+        choices=sorted(CUE_PRESETS),
+        default=DEFAULT_CUE_PRESET,
+        help=(
+            "Auto-cue preset to use when --cue is not provided. "
+            f"Defaults to {DEFAULT_CUE_PRESET}."
+        ),
+    )
+    beat_parser.add_argument(
+        "--cue",
+        action="append",
+        default=None,
+        metavar="LABEL=BEAT_INDEX",
+        help=CUE_TEMPLATE_HELP,
+    )
 
     cue_export_parser = subparsers.add_parser(
         "export-cues-csv",
@@ -174,7 +198,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "analyze-beats":
-        summary = analyze_beats_for_folder(args.folder, args.database)
+        try:
+            cue_template = (
+                parse_cue_template(args.cue)
+                if args.cue
+                else cue_template_for_preset(args.cue_preset)
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        summary = analyze_beats_for_folder(args.folder, args.database, cue_template)
         _print_beat_summary(summary)
         return 0
 
