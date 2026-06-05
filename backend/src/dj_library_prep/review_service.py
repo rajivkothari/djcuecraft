@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from dj_library_prep import database
+from dj_library_prep.genre_normalizer import suggest_track_metadata
 from dj_library_prep.models import ReviewStatus
 
 
@@ -78,7 +79,14 @@ def update_review_track(
             review_status=review_status.value,
         )
         if updated is not None:
-            database.record_review_history(connection, current, updated, "review_ui")
+            database.record_review_history(
+                connection,
+                current,
+                updated,
+                source="user_edit",
+                action=_audit_action(current, updated, review_status),
+                reason=_audit_reason(current, updated, review_status),
+            )
         connection.commit()
 
     if updated is None:
@@ -103,11 +111,64 @@ def _track_payload(row: Any) -> dict[str, Any]:
         for field_name in ("artist", "title", "year", "original_genre")
         if not values.get(field_name)
     ]
+    suggestion = suggest_track_metadata(
+        original_genre=values.get("original_genre"),
+        artist=values.get("artist"),
+        title=values.get("title"),
+        album=values.get("album"),
+        year=values.get("year"),
+        file_name=values.get("file_name"),
+    )
+    values["suggested_decade"] = values.get("normalized_decade")
+    values["suggested_genre"] = values.get("normalized_primary_genre")
+    values["suggested_subgenre"] = values.get("normalized_subgenre")
+    values["suggested_normalized_label"] = _normalized_label(
+        values.get("normalized_decade"),
+        values.get("normalized_primary_genre"),
+        values.get("normalized_subgenre"),
+    )
+    values["review_required"] = (
+        suggestion.review_required
+        or values["review_status"] == ReviewStatus.NEEDS_REVIEW.value
+    )
+    values["reason"] = suggestion.reason
     return values
 
 
 def _review_status(value: Any) -> ReviewStatus:
     return ReviewStatus(str(value or ReviewStatus.NEEDS_REVIEW.value))
+
+
+def _audit_action(current: Any, updated: Any, review_status: ReviewStatus) -> str:
+    if _normalized_values_changed(current, updated):
+        return "edit"
+    return {
+        ReviewStatus.APPROVED: "approve",
+        ReviewStatus.EDITED: "edit",
+        ReviewStatus.REJECTED: "reject",
+        ReviewStatus.SKIPPED: "skip",
+    }.get(review_status, "edit")
+
+
+def _audit_reason(current: Any, updated: Any, review_status: ReviewStatus) -> str:
+    if _normalized_values_changed(current, updated):
+        return "User edited the normalized metadata."
+    return {
+        ReviewStatus.APPROVED: "User approved the metadata suggestion.",
+        ReviewStatus.EDITED: "User edited the normalized metadata.",
+        ReviewStatus.REJECTED: "User rejected the metadata suggestion.",
+        ReviewStatus.SKIPPED: "User skipped the track during review.",
+    }.get(review_status, "User updated the review decision.")
+
+
+def _normalized_values_changed(current: Any, updated: Any) -> bool:
+    tracked_fields = (
+        "normalized_decade",
+        "normalized_primary_genre",
+        "normalized_subgenre",
+        "dj_use_tags",
+    )
+    return any(_compare(current[field]) != _compare(updated[field]) for field in tracked_fields)
 
 
 def _blank_to_none(value: Any) -> str | None:
@@ -170,3 +231,17 @@ def _pending_values_match(
 
 def _compare(value: Any) -> str:
     return "" if value is None else str(value)
+
+
+def _normalized_label(
+    decade: Any,
+    primary_genre: Any,
+    subgenre: Any,
+) -> str:
+    return " / ".join(
+        [
+            str(decade or "Unknown"),
+            str(primary_genre or "Unknown"),
+            str(subgenre or "Unknown"),
+        ]
+    )

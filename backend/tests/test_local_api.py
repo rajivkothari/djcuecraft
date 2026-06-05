@@ -81,7 +81,8 @@ def test_patch_track_endpoint_updates_review_fields_and_history(tmp_path) -> Non
 
     assert history_status == 200
     assert len(history_payload["history"]) == 1
-    assert history_payload["history"][0]["source"] == "review_ui"
+    assert history_payload["history"][0]["source"] == "user_edit"
+    assert history_payload["history"][0]["action"] == "edit"
     assert history_payload["history"][0]["new_review_status"] == "approved"
 
 

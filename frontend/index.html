@@ -20,7 +20,9 @@
             <option value="needs_review">Needs review</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
+            <option value="edited">Edited</option>
             <option value="rejected">Rejected</option>
+            <option value="skipped">Skipped</option>
           </select>
         </label>
         <button id="refreshButton" type="button">Refresh</button>
@@ -82,10 +84,10 @@
             <tr>
               <th>Track</th>
               <th>Original Metadata</th>
-              <th>Proposed Metadata</th>
+              <th>Suggested Metadata</th>
               <th>Confidence</th>
               <th>Status</th>
-              <th>Save</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="trackRows"></tbody>
@@ -109,11 +111,18 @@
           </dl>
           <div class="warnings" data-field="missing_fields"></div>
         </td>
-        <td class="editGrid">
-          <label>Decade <input data-input="normalized_decade" /></label>
-          <label>Primary <input data-input="normalized_primary_genre" /></label>
-          <label>Subgenre <input data-input="normalized_subgenre" /></label>
-          <label>Tags <input data-input="dj_use_tags" /></label>
+        <td>
+          <div class="suggestionBox">
+            <strong data-field="suggested_normalized_label"></strong>
+            <span data-field="review_required"></span>
+            <p data-field="reason"></p>
+          </div>
+          <div class="editGrid">
+            <label>Decade <input data-input="normalized_decade" /></label>
+            <label>Primary <input data-input="normalized_primary_genre" /></label>
+            <label>Subgenre <input data-input="normalized_subgenre" /></label>
+            <label>Tags <input data-input="dj_use_tags" /></label>
+          </div>
         </td>
         <td>
           <dl class="metadataList compact">
@@ -127,11 +136,16 @@
             <option value="needs_review">needs_review</option>
             <option value="pending">pending</option>
             <option value="approved">approved</option>
+            <option value="edited">edited</option>
             <option value="rejected">rejected</option>
+            <option value="skipped">skipped</option>
           </select>
         </td>
-        <td>
-          <button data-action="save" type="button">Save</button>
+        <td class="actionCell">
+          <button data-action="approve" type="button">Approve</button>
+          <button class="secondaryButton" data-action="save-edit" type="button">Save Edit</button>
+          <button class="secondaryButton" data-action="reject" type="button">Reject</button>
+          <button class="secondaryButton" data-action="skip" type="button">Skip</button>
           <button class="secondaryButton" data-action="history" type="button">History</button>
           <span class="rowState" data-field="row_state"></span>
           <div class="historyPanel" data-field="history_panel"></div>

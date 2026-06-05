@@ -76,7 +76,10 @@ def test_import_corrections_updates_changed_genre_fields_and_history(tmp_path) -
     assert history[0]["source_file"] == str(csv_path)
 
     assert len(review_history) == 1
-    assert review_history[0]["source"] == "csv_import"
+    assert review_history[0]["action"] == "edit"
+    assert review_history[0]["source"] == "user_edit"
+    assert review_history[0]["confidence_at_action"] == 0.92
+    assert review_history[0]["reason"] == f"Correction imported from {csv_path}."
     assert review_history[0]["previous_normalized_primary_genre"] == "Hip-Hop"
     assert review_history[0]["new_normalized_primary_genre"] == "R&B"
     assert review_history[0]["previous_normalized_subgenre"] is None

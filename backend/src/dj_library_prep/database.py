@@ -7,7 +7,9 @@ from collections.abc import Callable, Iterable
 from dj_library_prep.models import Track, utc_now_iso
 
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
+
+UNREVIEWED_STATUSES = ("pending", "needs_review")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tracks (
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS review_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     track_id INTEGER,
     file_path TEXT NOT NULL,
+    action TEXT NOT NULL,
     previous_normalized_decade TEXT,
     new_normalized_decade TEXT,
     previous_normalized_primary_genre TEXT,
@@ -68,10 +71,12 @@ CREATE TABLE IF NOT EXISTS review_history (
     new_dj_use_tags TEXT,
     previous_genre_confidence REAL,
     new_genre_confidence REAL,
+    confidence_at_action REAL,
     previous_review_status TEXT,
     new_review_status TEXT,
     timestamp TEXT NOT NULL,
     source TEXT NOT NULL,
+    reason TEXT,
     FOREIGN KEY(track_id) REFERENCES tracks(id)
 );
 """
@@ -142,6 +147,7 @@ def save_tracks(connection: sqlite3.Connection, tracks: Iterable[Track]) -> int:
 
 
 def save_track(connection: sqlite3.Connection, track: Track) -> None:
+    existing_track = get_track_by_file_path(connection, track.file_path)
     row = track.to_db_row()
     connection.execute(
         """
@@ -160,22 +166,55 @@ def save_track(connection: sqlite3.Connection, track: Track) -> None:
         ON CONFLICT(file_path) DO UPDATE SET
             file_name = excluded.file_name,
             file_extension = excluded.file_extension,
-            artist = excluded.artist,
-            title = excluded.title,
-            album = excluded.album,
-            year = excluded.year,
-            original_genre = excluded.original_genre,
-            normalized_decade = excluded.normalized_decade,
-            normalized_primary_genre = excluded.normalized_primary_genre,
-            normalized_subgenre = excluded.normalized_subgenre,
-            dj_use_tags = excluded.dj_use_tags,
-            metadata_confidence = excluded.metadata_confidence,
-            genre_confidence = excluded.genre_confidence,
-            review_status = excluded.review_status,
+            artist = COALESCE(excluded.artist, tracks.artist),
+            title = COALESCE(excluded.title, tracks.title),
+            album = COALESCE(excluded.album, tracks.album),
+            year = COALESCE(excluded.year, tracks.year),
+            original_genre = COALESCE(excluded.original_genre, tracks.original_genre),
+            metadata_confidence = MAX(excluded.metadata_confidence, tracks.metadata_confidence),
+            normalized_decade = CASE
+                WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.normalized_decade
+                ELSE excluded.normalized_decade
+            END,
+            normalized_primary_genre = CASE
+                WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.normalized_primary_genre
+                ELSE excluded.normalized_primary_genre
+            END,
+            normalized_subgenre = CASE
+                WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.normalized_subgenre
+                ELSE excluded.normalized_subgenre
+            END,
+            dj_use_tags = CASE
+                WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.dj_use_tags
+                ELSE excluded.dj_use_tags
+            END,
+            genre_confidence = CASE
+                WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.genre_confidence
+                ELSE excluded.genre_confidence
+            END,
+            review_status = CASE
+                WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.review_status
+                ELSE excluded.review_status
+            END,
             updated_at = excluded.updated_at
         """,
         row,
     )
+    updated_track = get_track_by_file_path(connection, track.file_path)
+    if (
+        existing_track is not None
+        and updated_track is not None
+        and existing_track["review_status"] in UNREVIEWED_STATUSES
+        and _review_fields_changed(existing_track, updated_track)
+    ):
+        record_review_history(
+            connection,
+            existing_track,
+            updated_track,
+            source="automated_suggestion",
+            action="suggestion_regenerated",
+            reason="Unreviewed metadata suggestion refreshed during scan.",
+        )
 
 
 def list_tracks(connection: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -248,15 +287,25 @@ def record_review_history(
     previous_track: sqlite3.Row,
     new_track: sqlite3.Row,
     source: str,
+    action: str | None = None,
+    reason: str | None = None,
+    confidence_at_action: float | None = None,
 ) -> bool:
     if not _review_fields_changed(previous_track, new_track):
         return False
 
+    resolved_action = action or _infer_review_action(previous_track, new_track, source)
+    resolved_confidence = (
+        float(confidence_at_action)
+        if confidence_at_action is not None
+        else _float_or_none(new_track["genre_confidence"])
+    )
     connection.execute(
         """
         INSERT INTO review_history (
             track_id,
             file_path,
+            action,
             previous_normalized_decade,
             new_normalized_decade,
             previous_normalized_primary_genre,
@@ -267,16 +316,19 @@ def record_review_history(
             new_dj_use_tags,
             previous_genre_confidence,
             new_genre_confidence,
+            confidence_at_action,
             previous_review_status,
             new_review_status,
             timestamp,
-            source
+            source,
+            reason
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             new_track["id"],
             new_track["file_path"],
+            resolved_action,
             previous_track["normalized_decade"],
             new_track["normalized_decade"],
             previous_track["normalized_primary_genre"],
@@ -287,10 +339,12 @@ def record_review_history(
             new_track["dj_use_tags"],
             previous_track["genre_confidence"],
             new_track["genre_confidence"],
+            resolved_confidence,
             previous_track["review_status"],
             new_track["review_status"],
             utc_now_iso(),
             source,
+            reason,
         ),
     )
     return True
@@ -595,7 +649,14 @@ def apply_genre_correction(
     )
     updated = get_track_by_id(connection, track["id"])
     if updated is not None:
-        record_review_history(connection, track, updated, "csv_import")
+        record_review_history(
+            connection,
+            track,
+            updated,
+            source="user_edit",
+            action="edit",
+            reason=f"Correction imported from {source_file}.",
+        )
 
 
 def list_correction_history(connection: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -630,8 +691,20 @@ def _migrate_legacy_bpm_columns(connection: sqlite3.Connection) -> None:
     _ensure_column(connection, "tracks", "bpm_confidence", "REAL NOT NULL DEFAULT 0.0")
 
 
+def _migrate_review_history_audit_columns(connection: sqlite3.Connection) -> None:
+    _ensure_column(
+        connection,
+        "review_history",
+        "action",
+        "TEXT NOT NULL DEFAULT 'edit'",
+    )
+    _ensure_column(connection, "review_history", "confidence_at_action", "REAL")
+    _ensure_column(connection, "review_history", "reason", "TEXT")
+
+
 MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
-    (CURRENT_SCHEMA_VERSION, _migrate_legacy_bpm_columns),
+    (1, _migrate_legacy_bpm_columns),
+    (CURRENT_SCHEMA_VERSION, _migrate_review_history_audit_columns),
 )
 
 
@@ -668,3 +741,45 @@ def _review_fields_changed(previous_track: sqlite3.Row, new_track: sqlite3.Row) 
 
 def _comparable_value(value: object) -> str:
     return "" if value is None else str(value)
+
+
+def _infer_review_action(
+    previous_track: sqlite3.Row, new_track: sqlite3.Row, source: str
+) -> str:
+    if source == "bulk_action" and new_track["review_status"] == "approved":
+        return "bulk_approve"
+
+    if _normalized_values_changed(previous_track, new_track):
+        return "edit"
+
+    status_action = {
+        "approved": "approve",
+        "edited": "edit",
+        "rejected": "reject",
+        "skipped": "skip",
+    }.get(str(new_track["review_status"]))
+    if status_action:
+        return status_action
+
+    return "review_status_changed"
+
+
+def _normalized_values_changed(
+    previous_track: sqlite3.Row, new_track: sqlite3.Row
+) -> bool:
+    tracked_fields = (
+        "normalized_decade",
+        "normalized_primary_genre",
+        "normalized_subgenre",
+        "dj_use_tags",
+    )
+    return any(
+        _comparable_value(previous_track[field]) != _comparable_value(new_track[field])
+        for field in tracked_fields
+    )
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)

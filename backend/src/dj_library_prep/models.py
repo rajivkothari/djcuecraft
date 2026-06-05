@@ -14,7 +14,9 @@ SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".m4a", ".wav"}
 class ReviewStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
+    EDITED = "edited"
     REJECTED = "rejected"
+    SKIPPED = "skipped"
     NEEDS_REVIEW = "needs_review"
 
 

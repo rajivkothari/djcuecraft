@@ -41,6 +41,9 @@ def test_list_review_tracks_returns_original_and_proposed_metadata(tmp_path) -> 
     assert tracks[0]["normalized_subgenre"] == "Salsa"
     assert tracks[0]["dj_use_tags"] == "latin"
     assert tracks[0]["review_status"] == "needs_review"
+    assert tracks[0]["suggested_normalized_label"] == "00s / Latin / Salsa"
+    assert tracks[0]["review_required"] is True
+    assert "Year tag indicates 2001" in tracks[0]["reason"]
 
 
 def test_update_review_track_edits_sqlite_only(tmp_path) -> None:
@@ -84,7 +87,6 @@ def test_update_review_track_edits_sqlite_only(tmp_path) -> None:
 
     history = list_review_history(saved_track["id"], db_path)
     assert len(history) == 1
-    assert history[0]["source"] == "review_ui"
     assert history[0]["file_path"] == str(audio_path)
     assert history[0]["previous_normalized_decade"] == "90s"
     assert history[0]["new_normalized_decade"] == "00s"
@@ -99,6 +101,10 @@ def test_update_review_track_edits_sqlite_only(tmp_path) -> None:
     assert history[0]["previous_review_status"] == "needs_review"
     assert history[0]["new_review_status"] == "approved"
     assert history[0]["timestamp"]
+    assert history[0]["action"] == "edit"
+    assert history[0]["source"] == "user_edit"
+    assert history[0]["confidence_at_action"] == 0.0
+    assert history[0]["reason"] == "User edited the normalized metadata."
 
 
 def test_update_review_track_rejects_unknown_fields(tmp_path) -> None:
@@ -167,5 +173,52 @@ def test_update_review_track_status_only_change_is_audited(tmp_path) -> None:
 
     history = list_review_history(saved_track["id"], db_path)
     assert len(history) == 1
+    assert history[0]["action"] == "reject"
+    assert history[0]["source"] == "user_edit"
+    assert history[0]["reason"] == "User rejected the metadata suggestion."
     assert history[0]["previous_review_status"] == "needs_review"
     assert history[0]["new_review_status"] == "rejected"
+
+
+def test_update_review_track_supports_edited_and_skipped_statuses(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="Unknown",
+        normalized_primary_genre="Hip-Hop",
+        review_status=ReviewStatus.NEEDS_REVIEW,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved_track = database.list_tracks(connection)[0]
+
+    edited = update_review_track(
+        saved_track["id"],
+        {
+            "normalized_decade": "00s",
+            "normalized_primary_genre": "Latin",
+            "normalized_subgenre": "Reggaeton",
+            "review_status": "edited",
+        },
+        db_path,
+    )
+    skipped = update_review_track(
+        saved_track["id"],
+        {"review_status": "skipped"},
+        db_path,
+    )
+
+    assert edited["review_status"] == "edited"
+    assert edited["normalized_decade"] == "00s"
+    assert edited["normalized_primary_genre"] == "Latin"
+    assert edited["normalized_subgenre"] == "Reggaeton"
+    assert skipped["review_status"] == "skipped"
+
+    history = list_review_history(saved_track["id"], db_path)
+    assert len(history) == 2
+    assert history[0]["action"] == "skip"
+    assert history[0]["new_review_status"] == "skipped"
+    assert history[1]["action"] == "edit"
+    assert history[1]["new_review_status"] == "edited"

@@ -5,10 +5,24 @@ from functools import lru_cache
 from importlib import resources
 import json
 import re
+import unicodedata
 from typing import Any
 
 from dj_library_prep.models import ReviewStatus, normalize_decade
 
+
+LOW_CONFIDENCE_REVIEW_THRESHOLD = 0.7
+WEAK_EVIDENCE_SOURCES = {"album", "filename", "title"}
+BROAD_OR_VAGUE_GENRES = {
+    "dance",
+    "indian",
+    "international",
+    "latin",
+    "other",
+    "soundtrack",
+    "unknown",
+    "world",
+}
 
 RULE_FILES = (
     "general_genres.json",
@@ -28,10 +42,34 @@ class GenreNormalization:
 
 
 @dataclass(frozen=True, slots=True)
+class MetadataSuggestion:
+    suggested_decade: str
+    suggested_genre: str | None
+    suggested_subgenre: str | None
+    normalized_label: str
+    confidence: float
+    review_required: bool
+    reason: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "suggested_decade": self.suggested_decade,
+            "suggested_genre": self.suggested_genre,
+            "suggested_subgenre": self.suggested_subgenre,
+            "normalized_label": self.normalized_label,
+            "confidence": self.confidence,
+            "review_required": self.review_required,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class TrackNormalizationContext:
     original_genre: str | None = None
     artist: str | None = None
     title: str | None = None
+    album: str | None = None
+    year: str | int | None = None
     file_name: str | None = None
 
 
@@ -48,6 +86,16 @@ class NormalizationRule:
     review_status: ReviewStatus
 
 
+@dataclass(frozen=True, slots=True)
+class MetadataSuggestionMatch:
+    suggested_genre: str | None
+    suggested_subgenre: str | None
+    base_confidence: float
+    review_required: bool
+    reason_label: str
+    evidence_sources: tuple[str, ...]
+
+
 def normalize_genre(
     original_genre: str | None,
     *,
@@ -62,6 +110,56 @@ def normalize_genre(
         file_name=file_name,
     )
     return normalize_context(context)
+
+
+def suggest_track_metadata(
+    *,
+    original_genre: str | None = None,
+    artist: str | None = None,
+    title: str | None = None,
+    album: str | None = None,
+    year: str | int | None = None,
+    file_name: str | None = None,
+) -> MetadataSuggestion:
+    context = TrackNormalizationContext(
+        original_genre=original_genre,
+        artist=artist,
+        title=title,
+        album=album,
+        year=year,
+        file_name=file_name,
+    )
+    suggested_decade = normalize_decade(year)
+    match = _suggest_genre_match(context)
+    confidence = _suggestion_confidence(match, suggested_decade, context)
+    review_required = (
+        confidence < LOW_CONFIDENCE_REVIEW_THRESHOLD
+        or match.review_required
+        or match.suggested_genre is None
+        or suggested_decade == "Unknown"
+        or _weak_evidence_requires_review(match)
+        or _broad_original_genre_requires_review(context, match)
+    )
+    normalized_label = _normalized_label(
+        suggested_decade,
+        match.suggested_genre,
+        match.suggested_subgenre,
+    )
+    return MetadataSuggestion(
+        suggested_decade=suggested_decade,
+        suggested_genre=match.suggested_genre,
+        suggested_subgenre=match.suggested_subgenre,
+        normalized_label=normalized_label,
+        confidence=confidence,
+        review_required=review_required,
+        reason=_suggestion_reason(
+            year=year,
+            suggested_decade=suggested_decade,
+            match=match,
+            confidence=confidence,
+            review_required=review_required,
+        ),
+    )
 
 
 def normalize_context(context: TrackNormalizationContext) -> GenreNormalization:
@@ -112,6 +210,231 @@ def normalize_track_fields(
         ),
         normalize_decade(year),
     )
+
+
+def _suggest_genre_match(context: TrackNormalizationContext) -> MetadataSuggestionMatch:
+    if _matches(context, ("latin freestyle",)):
+        return _match("Freestyle", "Latin Freestyle", 0.8, False, "latin freestyle", context, ("latin freestyle", "freestyle"))
+    if _matches(context, ("freestyle",)) and _matches(context, ("latin",)):
+        return _match("Freestyle", "Latin Freestyle", 0.76, False, "latin freestyle", context, ("freestyle", "latin"))
+    if _matches(context, ("freestyle",)):
+        return _match("Freestyle", "Club Freestyle", 0.7, True, "freestyle", context, ("freestyle",))
+
+    if _matches(context, ("reggaeton", "reggaeton urbano")):
+        return _match("Latin", "Reggaeton", 0.82, False, "reggaeton", context, ("reggaeton", "reggaeton urbano"))
+    if _matches(context, ("dembow",)):
+        return _match("Latin", "Dembow", 0.66, True, "dembow", context, ("dembow",))
+    if _matches(context, ("salsa",)):
+        return _match("Latin", "Salsa", 0.84, False, "salsa", context, ("salsa",))
+    if _matches(context, ("merengue",)):
+        return _match("Latin", "Merengue", 0.84, False, "merengue", context, ("merengue",))
+    if _matches(context, ("bachata",)):
+        return _match("Latin", "Bachata", 0.84, False, "bachata", context, ("bachata",))
+    if _matches(context, ("cumbia",)):
+        return _match("Latin", "Cumbia", 0.82, False, "cumbia", context, ("cumbia",))
+
+    if _matches(context, ("bhangra",)):
+        return _match("Punjabi", "Bhangra", 0.78, False, "bhangra", context, ("bhangra",))
+    if _matches(context, ("punjabi",)):
+        return _match("Punjabi", "Punjabi Pop", 0.6, True, "broad punjabi", context, ("punjabi",))
+    if _matches(context, ("tamil dance",)):
+        return _match("Tamil", "Tamil Dance", 0.76, False, "tamil dance", context, ("tamil dance",))
+    if _matches(context, ("kollywood",)):
+        subgenre = "Tamil Dance" if _matches(context, ("dance", "club")) else "Kollywood"
+        return _match("Tamil", subgenre, 0.72, False, "kollywood", context, ("kollywood",))
+    if _matches(context, ("tamil",)):
+        return _match("Tamil", "Kollywood", 0.6, True, "broad tamil", context, ("tamil",))
+    if _matches(context, ("bollywood",)):
+        subgenre = "Dance" if _matches(context, ("dance", "club", "wedding", "remix", "edit")) else "Classic Bollywood"
+        return _match("Bollywood", subgenre, 0.78, False, "bollywood", context, ("bollywood",))
+    if _matches(context, ("hindi",)):
+        return _match("Bollywood", "Classic Bollywood", 0.6, True, "broad hindi", context, ("hindi",))
+    if _matches(context, ("desi", "indian")):
+        return _match("Indian", None, 0.48, True, "broad indian", context, ("desi", "indian"))
+
+    if _matches(context, ("funk",)):
+        return _match("R&B", "Funk", 0.82, False, "funk", context, ("funk",))
+    if _matches(context, ("new jack swing",)):
+        return _match("R&B", "New Jack Swing", 0.82, False, "new jack swing", context, ("new jack swing",))
+    if _matches(context, ("r&b", "rnb", "soul")):
+        subgenre = "Soul" if _matches(context, ("soul",)) else "Contemporary R&B"
+        return _match("R&B", subgenre, 0.78, False, "r&b", context, ("r&b", "rnb", "soul"))
+
+    if _matches(context, ("trap",)):
+        return _match("Hip-Hop", "Trap", 0.8, False, "trap", context, ("trap",))
+    if _matches(context, ("boom bap",)):
+        return _match("Hip-Hop", "Boom Bap", 0.78, False, "boom bap", context, ("boom bap",))
+    if _matches(context, ("hip hop", "hip-hop", "rap")):
+        subgenre = "Club Rap" if _matches(context, ("club", "party", "anthem", "dance floor")) else "Pop Rap"
+        return _match("Hip-Hop", subgenre, 0.78, False, "hip-hop", context, ("hip hop", "hip-hop", "rap"))
+
+    if _matches(context, ("dance pop", "electropop")):
+        return _match("Pop", "Dance Pop", 0.82, False, "dance pop", context, ("dance pop", "electropop"))
+    if _matches(context, ("pop",)):
+        subgenre = "Dance Pop" if _matches(context, ("dance", "club", "remix", "edit")) else "Pop"
+        return _match("Pop", subgenre, 0.76, False, "pop", context, ("pop",))
+
+    if _matches(context, ("house",)):
+        return _match("Dance", "House", 0.8, False, "house", context, ("house",))
+    if _matches(context, ("edm", "electronic")):
+        return _match("Dance", "EDM", 0.76, False, "edm", context, ("edm", "electronic"))
+
+    if _matches(context, ("latin",)):
+        return _match("Latin", None, 0.42, True, "broad latin", context, ("latin",))
+    if _matches(context, ("world", "international", "soundtrack", "other", "unknown")):
+        return _match(None, None, 0.25, True, "broad or unknown genre", context, ("world", "international", "soundtrack", "other", "unknown"))
+
+    fallback = normalize_context(context)
+    return MetadataSuggestionMatch(
+        suggested_genre=fallback.primary_genre,
+        suggested_subgenre=fallback.subgenre,
+        base_confidence=fallback.confidence,
+        review_required=fallback.review_status == ReviewStatus.NEEDS_REVIEW,
+        reason_label="existing normalization rule" if fallback.primary_genre else "no reliable genre rule",
+        evidence_sources=_evidence_sources(context, (fallback.primary_genre or fallback.subgenre or "")),
+    )
+
+
+def _match(
+    genre: str | None,
+    subgenre: str | None,
+    confidence: float,
+    review_required: bool,
+    reason_label: str,
+    context: TrackNormalizationContext,
+    terms: tuple[str, ...],
+) -> MetadataSuggestionMatch:
+    return MetadataSuggestionMatch(
+        suggested_genre=genre,
+        suggested_subgenre=subgenre,
+        base_confidence=confidence,
+        review_required=review_required,
+        reason_label=reason_label,
+        evidence_sources=_evidence_sources(context, terms),
+    )
+
+
+def _suggestion_confidence(
+    match: MetadataSuggestionMatch,
+    suggested_decade: str,
+    context: TrackNormalizationContext,
+) -> float:
+    confidence = match.base_confidence
+    if suggested_decade != "Unknown":
+        confidence += 0.1
+    if len(match.evidence_sources) > 1:
+        confidence += 0.05
+
+    if (
+        suggested_decade == "Unknown"
+        or match.review_required
+        or _weak_evidence_requires_review(match)
+        or _broad_original_genre_requires_review(context, match)
+    ):
+        confidence = min(confidence, LOW_CONFIDENCE_REVIEW_THRESHOLD - 0.01)
+    return round(max(0.0, min(1.0, confidence)), 2)
+
+
+def _weak_evidence_requires_review(match: MetadataSuggestionMatch) -> bool:
+    sources = set(match.evidence_sources)
+    return bool(sources) and sources.issubset(WEAK_EVIDENCE_SOURCES)
+
+
+def _broad_original_genre_requires_review(
+    context: TrackNormalizationContext,
+    match: MetadataSuggestionMatch,
+) -> bool:
+    if not context.original_genre or not match.suggested_genre:
+        return False
+    if "genre tag" in match.evidence_sources:
+        return False
+    return bool(_broad_original_genre_terms(context.original_genre))
+
+
+def _broad_original_genre_terms(original_genre: str) -> set[str]:
+    candidates = _match_candidates(original_genre, split_genre=True)
+    return candidates.intersection(BROAD_OR_VAGUE_GENRES)
+
+
+def _normalized_label(
+    suggested_decade: str,
+    suggested_genre: str | None,
+    suggested_subgenre: str | None,
+) -> str:
+    return " / ".join(
+        [
+            suggested_decade or "Unknown",
+            suggested_genre or "Unknown",
+            suggested_subgenre or "Unknown",
+        ]
+    )
+
+
+def _suggestion_reason(
+    *,
+    year: str | int | None,
+    suggested_decade: str,
+    match: MetadataSuggestionMatch,
+    confidence: float,
+    review_required: bool,
+) -> str:
+    parts = []
+    if suggested_decade == "Unknown":
+        parts.append("No valid year was found, so decade is Unknown.")
+    else:
+        parts.append(f"Year tag indicates {str(year)[:4]} ({suggested_decade}).")
+
+    source_text = _source_text(match.evidence_sources)
+    if match.suggested_genre:
+        parts.append(f"{source_text} matched {match.reason_label} patterns.")
+    else:
+        parts.append(f"{source_text} did not match a reliable genre pattern.")
+
+    if review_required:
+        parts.append(
+            f"Review required because confidence is {confidence:.2f} or the evidence is broad."
+        )
+    return " ".join(parts)
+
+
+def _matches(context: TrackNormalizationContext, terms: tuple[str, ...]) -> bool:
+    return bool(_evidence_sources(context, terms))
+
+
+def _evidence_sources(
+    context: TrackNormalizationContext,
+    terms: tuple[str, ...] | str,
+) -> tuple[str, ...]:
+    if isinstance(terms, str):
+        terms = (terms,)
+    normalized_terms = tuple(_normalize_text(term) for term in terms if term)
+    if not normalized_terms:
+        return ()
+
+    sources = []
+    for field_name, label in (
+        ("original_genre", "genre tag"),
+        ("title", "title"),
+        ("album", "album"),
+        ("artist", "artist"),
+        ("file_name", "filename"),
+    ):
+        value = getattr(context, field_name)
+        if not value:
+            continue
+        haystack = _normalize_text(str(value))
+        candidates = _match_candidates(str(value), split_genre=field_name == "original_genre")
+        if any(term in candidates or term in haystack for term in normalized_terms):
+            sources.append(label)
+    return tuple(dict.fromkeys(sources))
+
+
+def _source_text(sources: tuple[str, ...]) -> str:
+    if not sources:
+        return "Available metadata"
+    if len(sources) == 1:
+        return sources[0].capitalize()
+    return ", ".join(sources[:-1]).capitalize() + f" and {sources[-1]}"
 
 
 @lru_cache(maxsize=1)
@@ -165,6 +488,8 @@ def _context_values(field_name: str, context: TrackNormalizationContext) -> list
         return _present(context.artist)
     if field_name == "title":
         return _present(context.title)
+    if field_name == "album":
+        return _present(context.album)
     if field_name == "file_name":
         return _present(context.file_name)
     if field_name == "keyword":
@@ -174,6 +499,7 @@ def _context_values(field_name: str, context: TrackNormalizationContext) -> list
                 context.original_genre,
                 context.artist,
                 context.title,
+                context.album,
                 context.file_name,
             )
             if value
@@ -195,7 +521,9 @@ def _match_candidates(value: str, *, split_genre: bool) -> set[str]:
 
 
 def _normalize_text(value: str) -> str:
-    normalized = value.lower().replace("&amp;", "&")
+    normalized = unicodedata.normalize("NFKD", value)
+    normalized = "".join(character for character in normalized if not unicodedata.combining(character))
+    normalized = normalized.lower().replace("&amp;", "&")
     normalized = normalized.replace("_", " ").replace("-", " ")
     normalized = re.sub(r"[()\[\]{}]", " ", normalized)
     return re.sub(r"\s+", " ", normalized).strip()
@@ -219,4 +547,12 @@ def _merge_tags(
 
 
 def _has_any_context(context: TrackNormalizationContext) -> bool:
-    return any((context.original_genre, context.artist, context.title, context.file_name))
+    return any(
+        (
+            context.original_genre,
+            context.artist,
+            context.title,
+            context.album,
+            context.file_name,
+        )
+    )

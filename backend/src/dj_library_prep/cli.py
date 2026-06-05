@@ -17,8 +17,11 @@ from dj_library_prep.beat_analyzer import (
 from dj_library_prep.bpm_analyzer import BpmAnalysisSummary, analyze_bpm_for_folder
 from dj_library_prep.correction_importer import CorrectionImportSummary, import_corrections
 from dj_library_prep.cue_exporter import export_cue_points_to_csv
-from dj_library_prep.csv_exporter import export_tracks_to_csv
-from dj_library_prep.genre_normalizer import normalize_track_fields
+from dj_library_prep.csv_exporter import (
+    export_approved_tracks_to_json,
+    export_tracks_to_csv,
+)
+from dj_library_prep.genre_normalizer import normalize_genre, suggest_track_metadata
 from dj_library_prep.local_api import serve_ui
 from dj_library_prep.metadata import read_track_metadata
 from dj_library_prep.models import ReviewStatus, Track
@@ -35,19 +38,26 @@ class ScanSummary:
     missing_title: int
     missing_year: int
     missing_genre: int
+    failed_tracks: int = 0
 
 
 def scan_folder(folder: str | Path, database_path: str | Path) -> ScanSummary:
     audio_files = scan_audio_files(folder)
-    tracks = [_prepare_track(path) for path in audio_files]
+    tracks: list[Track] = []
+    failed_tracks = 0
+    for path in audio_files:
+        track, failed = _prepare_track_safely(path)
+        tracks.append(track)
+        if failed:
+            failed_tracks += 1
 
     with database.connect(database_path) as connection:
         database.save_tracks(connection, tracks)
 
-    return summarize_tracks(tracks)
+    return summarize_tracks(tracks, failed_tracks=failed_tracks)
 
 
-def summarize_tracks(tracks: list[Track]) -> ScanSummary:
+def summarize_tracks(tracks: list[Track], failed_tracks: int = 0) -> ScanSummary:
     return ScanSummary(
         total_tracks_scanned=len(tracks),
         tracks_with_metadata=sum(1 for track in tracks if track.metadata_confidence > 0),
@@ -61,6 +71,7 @@ def summarize_tracks(tracks: list[Track]) -> ScanSummary:
         missing_title=sum(1 for track in tracks if not track.title),
         missing_year=sum(1 for track in tracks if not track.year),
         missing_genre=sum(1 for track in tracks if not track.original_genre),
+        failed_tracks=failed_tracks,
     )
 
 
@@ -78,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_parser = subparsers.add_parser(
         "export-csv",
-        help="Export scanned tracks and proposed normalized tags to CSV",
+        help="Export approved and edited metadata changes to CSV",
     )
     export_parser.add_argument(
         "--database",
@@ -90,6 +101,20 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="CSV output path",
     )
+    export_json_parser = subparsers.add_parser(
+        "export-json",
+        help="Export approved and edited metadata changes to JSON",
+    )
+    export_json_parser.add_argument(
+        "--database",
+        default="djcuecraft.sqlite3",
+        help="SQLite database path. Defaults to djcuecraft.sqlite3",
+    )
+    export_json_parser.add_argument(
+        "--output",
+        required=True,
+        help="JSON output path",
+    )
 
     import_parser = subparsers.add_parser(
         "import-corrections",
@@ -97,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument(
         "csv_path",
-        help="Corrected CSV file exported from export-csv",
+        help="Corrected review CSV file with normalized metadata fields",
     )
     import_parser.add_argument(
         "--database",
@@ -183,8 +208,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "export-csv":
         exported_count = export_tracks_to_csv(args.database, args.output)
-        print(f"Exported {exported_count} tracks to {args.output}")
-        print("No audio files were modified.")
+        print(f"Exported {exported_count} approved/edited tracks to {args.output}")
+        print("No audio files, ID3 tags, or DJ software libraries were modified.")
+        return 0
+
+    if args.command == "export-json":
+        exported_count = export_approved_tracks_to_json(args.database, args.output)
+        print(f"Exported {exported_count} approved/edited tracks to {args.output}")
+        print("No audio files, ID3 tags, or DJ software libraries were modified.")
         return 0
 
     if args.command == "import-corrections":
@@ -226,22 +257,36 @@ def main(argv: list[str] | None = None) -> int:
 
 def _prepare_track(path: Path) -> Track:
     track = read_track_metadata(path)
-    genre, decade = normalize_track_fields(
+    suggestion = suggest_track_metadata(
+        original_genre=track.original_genre,
+        year=track.year,
+        artist=track.artist,
+        title=track.title,
+        album=track.album,
+        file_name=track.file_name,
+    )
+    tags = normalize_genre(
         track.original_genre,
-        track.year,
         artist=track.artist,
         title=track.title,
         file_name=track.file_name,
     )
-    track.normalized_decade = decade
-    track.normalized_primary_genre = genre.primary_genre
-    track.normalized_subgenre = genre.subgenre
-    track.dj_use_tags = genre.dj_use_tags
-    track.genre_confidence = genre.confidence
-    track.review_status = genre.review_status
-    if track.missing_fields():
+    track.normalized_decade = suggestion.suggested_decade
+    track.normalized_primary_genre = suggestion.suggested_genre
+    track.normalized_subgenre = suggestion.suggested_subgenre
+    track.dj_use_tags = tags.dj_use_tags
+    track.genre_confidence = suggestion.confidence
+    track.review_status = ReviewStatus.PENDING
+    if suggestion.review_required or track.missing_fields():
         track.review_status = ReviewStatus.NEEDS_REVIEW
     return track
+
+
+def _prepare_track_safely(path: Path) -> tuple[Track, bool]:
+    try:
+        return _prepare_track(path), False
+    except Exception:
+        return Track.from_file(path), True
 
 
 def _print_summary(summary: ScanSummary) -> None:
@@ -257,6 +302,7 @@ def _print_summary(summary: ScanSummary) -> None:
     print(f"  missing title: {summary.missing_title}")
     print(f"  missing year: {summary.missing_year}")
     print(f"  missing genre: {summary.missing_genre}")
+    print(f"  failed tracks: {summary.failed_tracks}")
 
 
 def _print_import_summary(summary: CorrectionImportSummary) -> None:

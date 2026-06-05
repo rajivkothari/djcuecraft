@@ -67,6 +67,9 @@ function renderTrackRow(track) {
       element.textContent = (track.missing_fields || []).join("; ");
     } else if (field === "row_state") {
       element.textContent = "";
+    } else if (field === "review_required") {
+      element.textContent = track.review_required ? "Review required" : "Ready to approve";
+      element.className = track.review_required ? "reviewFlag warningFlag" : "reviewFlag";
     } else if (field.endsWith("_confidence")) {
       element.textContent = formatConfidence(track[field]);
     } else {
@@ -79,8 +82,17 @@ function renderTrackRow(track) {
     input.value = track[field] || "";
   }
 
-  row.querySelector('[data-action="save"]').addEventListener("click", () => {
-    saveTrack(row);
+  row.querySelector('[data-action="approve"]').addEventListener("click", () => {
+    saveTrack(row, "approved");
+  });
+  row.querySelector('[data-action="save-edit"]').addEventListener("click", () => {
+    saveTrack(row, "edited");
+  });
+  row.querySelector('[data-action="reject"]').addEventListener("click", () => {
+    saveTrack(row, "rejected");
+  });
+  row.querySelector('[data-action="skip"]').addEventListener("click", () => {
+    saveTrack(row, "skipped");
   });
   row.querySelector('[data-action="history"]').addEventListener("click", () => {
     loadHistory(row);
@@ -167,17 +179,22 @@ function cueCell(value) {
   return cell;
 }
 
-async function saveTrack(row) {
+async function saveTrack(row, forcedStatus = null) {
   const trackId = row.dataset.trackId;
-  const saveButton = row.querySelector('[data-action="save"]');
+  const actionButtons = row.querySelectorAll("button[data-action]");
   const rowState = row.querySelector('[data-field="row_state"]');
   const payload = {};
 
   for (const field of editableFields) {
     payload[field] = row.querySelector(`[data-input="${field}"]`).value;
   }
+  if (forcedStatus) {
+    payload.review_status = forcedStatus;
+  }
 
-  saveButton.disabled = true;
+  for (const button of actionButtons) {
+    button.disabled = true;
+  }
   rowState.textContent = "Saving...";
   try {
     const response = await fetch(`/api/tracks/${trackId}`, {
@@ -196,11 +213,19 @@ async function saveTrack(row) {
     for (const field of editableFields) {
       row.querySelector(`[data-input="${field}"]`).value = updated[field] || "";
     }
+    row.querySelector('[data-field="suggested_normalized_label"]').textContent =
+      valueOrDash(updated.suggested_normalized_label);
+    row.querySelector('[data-field="reason"]').textContent = valueOrDash(updated.reason);
+    const reviewFlag = row.querySelector('[data-field="review_required"]');
+    reviewFlag.textContent = updated.review_required ? "Review required" : "Ready to approve";
+    reviewFlag.className = updated.review_required ? "reviewFlag warningFlag" : "reviewFlag";
     rowState.textContent = "Saved";
   } catch (error) {
     rowState.textContent = "Save failed";
   } finally {
-    saveButton.disabled = false;
+    for (const button of actionButtons) {
+      button.disabled = false;
+    }
   }
 }
 
@@ -227,7 +252,7 @@ async function loadHistory(row) {
     for (const record of history.slice(0, 5)) {
       const item = document.createElement("div");
       item.className = "historyItem";
-      item.textContent = `${record.timestamp} ${record.source}: ${record.previous_review_status} -> ${record.new_review_status}; ${valueOrDash(record.previous_normalized_primary_genre)} -> ${valueOrDash(record.new_normalized_primary_genre)}`;
+      item.textContent = `${record.timestamp} ${record.source} ${record.action}: ${record.previous_review_status} -> ${record.new_review_status}; ${valueOrDash(record.previous_normalized_primary_genre)} -> ${valueOrDash(record.new_normalized_primary_genre)}; confidence ${formatConfidence(record.confidence_at_action)}; ${valueOrDash(record.reason)}`;
       panel.appendChild(item);
     }
   } catch (error) {
