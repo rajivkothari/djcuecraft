@@ -1,29 +1,41 @@
+/* Inter — local variable font (offline-capable) */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-var-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   color-scheme: dark;
 
-  /* Core backgrounds */
-  --bg: #0d0d12;
-  --bg-raised: #16161f;
-  --bg-surface: #1e1e2a;
-  --bg-hover: #262635;
+  /* Core backgrounds — layered dark palette */
+  --bg: #141420;
+  --bg-raised: #1a1a28;
+  --bg-surface: #222234;
+  --bg-hover: #2a2a3d;
 
-  /* Accent — hot pink */
+  /* Accent — hot pink from Beats by RKADE */
   --accent: #e91e8c;
   --accent-hover: #f43fa5;
   --accent-muted: rgba(233, 30, 140, 0.15);
   --accent-glow: rgba(233, 30, 140, 0.25);
 
   /* Text hierarchy */
-  --text: #f0f0f5;
+  --text: #ededf2;
   --text-secondary: #9d9db5;
   --text-muted: #6b6b85;
   --text-on-accent: #ffffff;
 
-  /* Borders */
-  --line: #2a2a3a;
-  --line-strong: #3a3a4d;
+  /* Borders and dividers */
+  --line: #2e2e40;
+  --line-strong: #3d3d52;
 
-  /* Semantic */
+  /* Semantic colors */
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #f87171;
@@ -33,22 +45,50 @@
   --focus: #e91e8c;
   --selected-row: rgba(233, 30, 140, 0.08);
 
-  /* Waveform */
-  --waveform-bg: #0a0a10;
-  --waveform-low: #e91e8c;
-  --waveform-mid: #f43fa5;
-  --waveform-high: #f9a8d4;
+  /* Waveform — current single-amplitude display */
+  --waveform-bg: #0e0e18;
   --waveform-wave: #e91e8c;
   --waveform-playhead: #ffffff;
+  --waveform-cue: #f87171;
+
+  /* Waveform — frequency band colors */
+  --waveform-low: #e91e8c;
+  --waveform-mid: #c77dba;
+  --waveform-high: #8b8bbd;
   --waveform-beat: rgba(255, 255, 255, 0.25);
   --waveform-bar: rgba(255, 255, 255, 0.5);
-  --waveform-cue: #f87171;
   --waveform-zoom-region: rgba(255, 255, 255, 0.08);
 }
 
-* {
+/* ---- Scrollbars ---- */
+
+*,
+::before,
+::after {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--bg);
 }
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ---- Base ---- */
 
 body {
   margin: 0;
@@ -58,20 +98,7 @@ body {
   font-size: 14px;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
+/* ---- Top bar ---- */
 
 .topbar {
   align-items: center;
@@ -84,29 +111,12 @@ body {
   padding: 14px 18px;
 }
 
-.topbar > div:first-child {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.titleAccent {
-  width: 3px;
-  height: 36px;
-  background: var(--accent);
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.titleGroup {
-  display: grid;
-  gap: 2px;
-}
-
 h1 {
-  font-size: 22px;
+  border-left: 3px solid var(--accent);
+  font-size: 20px;
   font-weight: 700;
-  margin: 0;
+  margin: 0 0 4px;
+  padding-left: 10px;
 }
 
 .brandTag {
@@ -114,8 +124,13 @@ h1 {
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
-  margin: 0;
+  margin: 0 0 4px 13px;
   text-transform: uppercase;
+}
+
+#summary {
+  color: var(--text-secondary);
+  margin: 0 0 0 13px;
 }
 
 p {
@@ -128,6 +143,8 @@ p {
   display: flex;
   gap: 10px;
 }
+
+/* ---- Form elements ---- */
 
 label {
   color: var(--text-secondary);
@@ -142,10 +159,11 @@ input,
 select,
 textarea {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 6px;
   font: inherit;
-  min-height: 34px;
-  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+  min-height: 32px;
+  transition: background-color 150ms ease, border-color 150ms ease,
+    color 150ms ease, box-shadow 150ms ease;
 }
 
 button {
@@ -155,6 +173,9 @@ button {
   cursor: pointer;
   font-weight: 600;
   padding: 0 16px;
+  border-radius: 8px;
+  min-height: 34px;
+  transition: background-color 150ms ease, transform 100ms ease;
 }
 
 button:hover:not(:disabled) {
@@ -167,9 +188,10 @@ button:active:not(:disabled) {
 
 .secondaryButton {
   background: var(--bg-surface);
-  border-color: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   color: var(--text);
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .secondaryButton:hover:not(:disabled) {
@@ -193,11 +215,13 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus,
-button:focus {
+button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent-glow);
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
 }
+
+/* ---- Layout ---- */
 
 main {
   display: grid;
@@ -210,6 +234,8 @@ textarea {
   min-height: 72px;
   resize: vertical;
 }
+
+/* ---- Panels ---- */
 
 .toolPanel {
   background: var(--bg-raised);
@@ -228,6 +254,7 @@ textarea {
 }
 
 h2 {
+  color: var(--text);
   font-size: 16px;
   font-weight: 700;
   margin: 0 0 4px;
@@ -249,6 +276,8 @@ h2 {
   min-width: 0;
 }
 
+/* ---- Tables ---- */
+
 .tableShell {
   background: var(--bg-raised);
   border: 1px solid var(--line);
@@ -265,7 +294,7 @@ table {
 th,
 td {
   border-bottom: 1px solid var(--line);
-  padding: 10px 12px;
+  padding: 12px 10px;
   text-align: left;
   vertical-align: top;
 }
@@ -280,9 +309,10 @@ th {
   text-transform: uppercase;
   top: 0;
   z-index: 1;
-  border-bottom-color: var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
 }
 
+/* Collapsed track table: caret | Track | Artist/Title | Confidence | Status */
 th.caretCol,
 td.caretCol { width: 34px; padding-left: 12px; padding-right: 0; }
 thead th:nth-child(2) { width: 34%; }
@@ -305,6 +335,14 @@ thead th:nth-child(5) { width: 130px; }
   vertical-align: middle;
 }
 
+/* Row hover */
+tbody tr:hover {
+  background: var(--bg-hover);
+  transition: background 120ms ease;
+}
+
+/* ---- Detail row ---- */
+
 .detailRow > td {
   background: var(--bg-surface);
   padding: 14px 16px;
@@ -324,26 +362,35 @@ thead th:nth-child(5) { width: 130px; }
   text-transform: uppercase;
 }
 
+/* ---- Status badges ---- */
+
 .statusLabel {
   margin-bottom: 10px;
 }
 
 .statusBadge {
-  border-radius: 12px;
   display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 3px 10px;
   text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.status-approved { background: rgba(52, 211, 153, 0.15); color: var(--success); }
-.status-edited { background: var(--accent-muted); color: var(--accent); }
-.status-pending { background: rgba(96, 165, 250, 0.15); color: var(--info); }
-.status-needs_review { background: rgba(251, 191, 36, 0.15); color: var(--warning); }
-.status-rejected { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
-.status-skipped { background: transparent; color: var(--text-muted); }
+.status-needs_review { color: var(--warning); background: rgba(251, 191, 36, 0.12); }
+.status-pending      { color: var(--info);    background: rgba(96, 165, 250, 0.12); }
+.status-approved     { color: var(--success); background: rgba(52, 211, 153, 0.12); }
+.status-edited       { color: var(--accent);  background: var(--accent-muted); }
+.status-rejected     { color: var(--danger);  background: rgba(248, 113, 113, 0.12); }
+.status-skipped      { color: var(--text-muted); background: transparent; }
+
+/* ---- Confidence coloring ---- */
+
+.confidence-low { color: var(--danger); }
+.confidence-mid { color: var(--warning); }
+
+/* ---- Track cell ---- */
 
 .trackCell strong,
 .trackCell span {
@@ -352,6 +399,7 @@ thead th:nth-child(5) { width: 130px; }
 }
 
 .trackCell strong {
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -360,6 +408,8 @@ thead th:nth-child(5) { width: 130px; }
   font-size: 12px;
   margin-top: 5px;
 }
+
+/* ---- Metadata list ---- */
 
 .metadataList {
   display: grid;
@@ -384,9 +434,12 @@ dt {
 }
 
 dd {
+  color: var(--text);
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* ---- Edit grid ---- */
 
 .editGrid {
   display: grid;
@@ -395,13 +448,15 @@ dd {
 }
 
 .editGrid label {
-  min-width: 0;
   color: var(--text-muted);
   font-size: 11px;
+  font-weight: 600;
+  min-width: 0;
 }
 
 .editGrid input {
   background: var(--bg);
+  border: 1px solid var(--line);
 }
 
 .warnings {
@@ -409,6 +464,8 @@ dd {
   font-size: 12px;
   margin-top: 8px;
 }
+
+/* ---- Suggestion box ---- */
 
 .suggestionBox {
   background: var(--bg-surface);
@@ -421,8 +478,9 @@ dd {
 }
 
 .suggestionBox strong {
-  overflow-wrap: anywhere;
+  color: var(--text);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .suggestionBox p {
@@ -441,6 +499,8 @@ dd {
   color: var(--warning);
 }
 
+/* ---- Action cell ---- */
+
 .actionCell {
   display: grid;
   gap: 6px;
@@ -448,12 +508,6 @@ dd {
 
 .actionCell .secondaryButton {
   margin-top: 0;
-}
-
-.actionCell button[data-action="reject"]:hover:not(:disabled) {
-  border-color: var(--danger);
-  color: var(--danger);
-  background: var(--bg-surface);
 }
 
 .rowState {
@@ -464,8 +518,9 @@ dd {
   min-height: 16px;
 }
 
+/* ---- History panel ---- */
+
 .historyPanel {
-  background: var(--bg);
   color: var(--text-muted);
   font-size: 12px;
   margin-top: 8px;
@@ -474,8 +529,9 @@ dd {
 .historyItem {
   border-top: 1px solid var(--line);
   padding: 6px 0;
-  color: var(--text-secondary);
 }
+
+/* ---- Folder input row ---- */
 
 .folderInputRow {
   display: flex;
@@ -492,6 +548,8 @@ dd {
   white-space: nowrap;
 }
 
+/* ---- Cue table rename controls ---- */
+
 .cueEditBtn {
   font-size: 14px;
   min-height: 26px;
@@ -499,6 +557,7 @@ dd {
 }
 
 .cueLabelInput {
+  background: var(--bg-surface);
   display: block;
   min-height: 28px;
   width: 100%;
@@ -513,6 +572,9 @@ dd {
 }
 
 .cueRenameCancel {
+  background: var(--bg-surface);
+  border-color: var(--line);
+  color: var(--text);
   display: block;
   font-size: 12px;
   margin-top: 4px;
@@ -521,17 +583,14 @@ dd {
   width: 100%;
 }
 
+/* ---- Row selection ---- */
+
 .selectable {
   cursor: pointer;
 }
 
 .selectableRow {
   cursor: pointer;
-  transition: background-color 120ms ease;
-}
-
-.selectableRow:hover {
-  background: var(--bg-hover);
 }
 
 .trackCell.selectable::after {
@@ -549,7 +608,11 @@ dd {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-/* Cue editor — persistent bottom panel */
+/* ---- Cue editor — persistent bottom panel ---- */
+
+main {
+  padding-bottom: 52vh;
+}
 
 .cueEditor {
   background: var(--bg);
@@ -569,13 +632,10 @@ dd {
 
 .editorBar {
   align-items: center;
-  background: var(--bg-raised);
-  border-radius: 8px;
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
-  padding: 8px 12px;
 }
 
 .editorTrackInfo {
@@ -584,6 +644,7 @@ dd {
 }
 
 .editorTrackInfo strong {
+  color: var(--text);
   font-size: 15px;
   font-weight: 700;
   overflow-wrap: anywhere;
@@ -636,10 +697,10 @@ dd {
 }
 
 .volumeControl input[type="range"] {
+  background: transparent;
   border: none;
   min-height: auto;
   width: 60px;
-  background: transparent;
 }
 
 .zoomControl {
@@ -652,11 +713,13 @@ dd {
 }
 
 .zoomControl input[type="range"] {
+  background: transparent;
   border: none;
   min-height: auto;
   width: 80px;
-  background: transparent;
 }
+
+/* ---- Waveform canvases ---- */
 
 .waveformOverview {
   background: var(--waveform-bg);
@@ -677,6 +740,8 @@ dd {
   height: 120px;
   width: 100%;
 }
+
+/* ---- Pad bar ---- */
 
 .padBar {
   align-items: center;
@@ -705,6 +770,8 @@ dd {
   font-size: 12px;
 }
 
+/* ---- Pad grid ---- */
+
 .padGrid {
   display: grid;
   gap: 8px;
@@ -725,8 +792,8 @@ dd {
 }
 
 .pad.padEmpty {
-  opacity: 0.5;
   border-style: dashed;
+  opacity: 0.5;
 }
 
 .padTop {
@@ -737,6 +804,7 @@ dd {
 }
 
 .padLabel {
+  color: var(--text);
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -778,6 +846,8 @@ dd {
   margin-top: 0;
 }
 
+/* ---- Responsive ---- */
+
 @media (max-width: 760px) {
   .topbar {
     align-items: stretch;
@@ -800,11 +870,11 @@ dd {
 
   main {
     padding: 8px;
-    padding-bottom: 60vh;
+    padding-bottom: 62vh;
   }
 
   .padGrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cueEditor {

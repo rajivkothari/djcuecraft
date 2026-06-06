@@ -120,6 +120,12 @@ function renderTrackGroup(track) {
       element.className = track.review_required ? "reviewFlag warningFlag" : "reviewFlag";
     } else if (field.endsWith("_confidence")) {
       element.textContent = formatConfidence(track[field]);
+      element.className = "";
+      const numeric = Number(track[field]);
+      if (!Number.isNaN(numeric) && track[field] !== null && track[field] !== "") {
+        if (numeric < 0.4) element.classList.add("confidence-low");
+        else if (numeric < 0.7) element.classList.add("confidence-mid");
+      }
     } else {
       element.textContent = valueOrDash(track[field]);
     }
