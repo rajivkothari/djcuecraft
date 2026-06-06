@@ -6,6 +6,28 @@ All 184 tests pass.
 
 ---
 
+## Fix Session 3 — Full-Track Beat Detection + Nudge-Aware Auto-Fill
+
+### Problem 1 — Beat detection truncated at 180 seconds
+
+`detect_beat_timestamps()` in `beat_analyzer.py` called `librosa.load(path, mono=True, duration=180)`, limiting beat timestamps to the first 3 minutes. Time-fraction cues (Chorus 2 at 0.55, Breakdown at 0.68, etc.) all collapsed to the last detected beat near 2:53.
+
+**Fix**: Removed `duration=180` — now loads the full track. BPM detection in `bpm_analyzer.py` still uses a 120-second sample (sufficient for tempo estimation; left unchanged with an explanatory comment).
+
+### Problem 2 — Nudge offset discarded by auto-fill
+
+When the user nudged the beat grid and clicked Auto-fill, the backend used raw un-nudged beat timestamps.
+
+**Fix**: `autofill_pads()` now accepts `nudge_seconds: float = 0.0`. Both `_autofill_from_phrase()` and `_autofill_from_preset()` apply `max(0.0, beats[beat_index] + nudge_seconds)` to every placed pad timestamp. The API endpoint reads `nudge_seconds` from the request body. The frontend sends `gridNudge` in the auto-fill request when non-zero. Manual Set captures continue to use raw playhead position (intentional). Batch auto-fill does not accept nudge (per-track precision is a second pass).
+
+### Problem 3 — Time-fraction deduplication
+
+Verified: `propose_cue_points()` deduplicates on exact `beat_index` match only (`if beat_index in used_beat_indices`), not proximity. With full-track beats available, the performance preset's 8 cues now resolve to 8 distinct positions on a 5-minute track.
+
+All 203 tests pass (7 new: 2 beat_analyzer, 3 pads, 2 local_api).
+
+---
+
 ## Session 8 — Compact Cue Editor + Batch Pad Auto-Fill
 
 ### Part A — Compact Cue Editor Layout

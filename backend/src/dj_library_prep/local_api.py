@@ -176,11 +176,14 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                     preset_name = payload.get("preset") or None
                     raw_duration = payload.get("total_duration_seconds")
                     total_duration_seconds = float(raw_duration) if raw_duration else None
+                    raw_nudge = payload.get("nudge_seconds")
+                    nudge_seconds = float(raw_nudge) if raw_nudge is not None else 0.0
                     pads = pad_service.autofill_pads(
                         track_id,
                         phrase_length=phrase_length,
                         preset_name=preset_name,
                         total_duration_seconds=total_duration_seconds,
+                        nudge_seconds=nudge_seconds,
                         database_path=database_path,
                     )
                 except (ValueError, json.JSONDecodeError) as exc:

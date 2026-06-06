@@ -576,3 +576,38 @@ def test_parse_cue_template_produces_beat_index_only_cues() -> None:
     for cue in cues:
         assert cue.beat_index is not None
         assert cue.time_fraction is None
+
+
+def test_detect_beat_timestamps_loads_full_track() -> None:
+    """Verify librosa.load call does not truncate with a duration parameter."""
+    import inspect
+    from dj_library_prep.beat_analyzer import detect_beat_timestamps
+
+    source = inspect.getsource(detect_beat_timestamps)
+    assert "duration=" not in source, "librosa.load should not pass duration="
+    assert "librosa.load(path, mono=True)" in source
+
+
+def test_performance_preset_full_duration_places_distinct_cues() -> None:
+    """With beats spanning full 5-min track, all 8 performance cues land at distinct positions."""
+    beats = [round(i * 0.5, 3) for i in range(600)]  # 300s of beats
+    cues = propose_cue_points(
+        beats,
+        beat_confidence=0.8,
+        cue_template=CUE_PRESETS["performance"],
+        total_duration_seconds=300.0,
+    )
+
+    assert len(cues) == 8
+    timestamps = [c["timestamp_seconds"] for c in cues]
+    assert len(set(timestamps)) == 8  # all distinct
+
+    labels = [c["cue_label"] for c in cues]
+    assert labels[0] == "Start"
+    assert cues[0]["timestamp_seconds"] == 0.0
+    # Chorus 2 at 0.55*300 = 165s
+    chorus2 = next(c for c in cues if c["cue_label"] == "Chorus 2")
+    assert abs(chorus2["timestamp_seconds"] - 165.0) < 1.0
+    # Outro at 0.92*300 = 276s
+    outro = next(c for c in cues if c["cue_label"] == "Outro")
+    assert abs(outro["timestamp_seconds"] - 276.0) < 1.0

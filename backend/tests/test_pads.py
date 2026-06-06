@@ -358,3 +358,35 @@ def test_batch_autofill_invalid_phrase_length_raises(tmp_path) -> None:
     import pytest
     with pytest.raises(ValueError, match="positive"):
         pads.batch_autofill_pads(phrase_length=0, database_path=db_path)
+
+
+def test_autofill_with_positive_nudge_offsets_timestamps(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path, beat_count=300)
+
+    pad_slots = pads.autofill_pads(track_id, nudge_seconds=0.05, database_path=db_path)
+
+    assert pad_slots[0]["timestamp_seconds"] == pytest.approx(0.05)
+    assert pad_slots[1]["timestamp_seconds"] == pytest.approx(16.05)
+
+
+def test_autofill_with_negative_nudge_clamps_to_zero(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path, beat_count=300)
+
+    pad_slots = pads.autofill_pads(track_id, nudge_seconds=-0.03, database_path=db_path)
+
+    # beat 0 at 0.0s - 0.03 would be -0.03, clamped to 0.0
+    assert pad_slots[0]["timestamp_seconds"] == 0.0
+    # beat 32 at 16.0s - 0.03 = 15.97
+    assert pad_slots[1]["timestamp_seconds"] == pytest.approx(15.97)
+
+
+def test_autofill_default_nudge_places_exact_positions(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path, beat_count=300)
+
+    pad_slots = pads.autofill_pads(track_id, database_path=db_path)
+
+    assert pad_slots[0]["timestamp_seconds"] == 0.0
+    assert pad_slots[1]["timestamp_seconds"] == 16.0

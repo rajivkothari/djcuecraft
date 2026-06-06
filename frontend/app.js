@@ -1265,6 +1265,7 @@ async function autoFillPads() {
     const body = {};
     if (preset) body.preset = preset;
     if (duration > 0) body.total_duration_seconds = duration;
+    if (gridNudge !== 0) body.nudge_seconds = gridNudge;
     const response = await fetch(`/api/tracks/${selectedTrack.id}/pads/auto-fill`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1279,7 +1280,8 @@ async function autoFillPads() {
     renderPads();
     drawAll();
     const label = preset || "phrase";
-    padState.textContent = `Pads filled (${label})`;
+    const nudgeInfo = gridNudge !== 0 ? ` nudge ${Math.round(gridNudge * 1000)}ms` : "";
+    padState.textContent = `Pads filled (${label}${nudgeInfo})`;
   } catch (error) {
     padState.textContent = "Auto-fill failed";
   } finally {

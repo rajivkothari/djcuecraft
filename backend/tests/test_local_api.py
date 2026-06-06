@@ -4,6 +4,8 @@ from http.server import ThreadingHTTPServer
 import json
 from threading import Thread
 
+import pytest
+
 from dj_library_prep import database, local_api
 from dj_library_prep.beat_analyzer import BeatCueAnalysisSummary, CueTemplate
 from dj_library_prep.local_api import _handler_factory
@@ -777,3 +779,34 @@ def test_batch_auto_fill_endpoint_invalid_phrase_length_returns_400(tmp_path) ->
 
     assert status == 400
     assert "error" in payload
+
+
+def test_auto_fill_with_nudge_applies_offset(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    saved = _track_with_beats_api(db_path, beat_count=300)
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST",
+            f"/api/tracks/{saved['id']}/pads/auto-fill",
+            {"nudge_seconds": 0.05})
+
+    assert status == 200
+    pads = payload["pads"]
+    assert pads[0]["timestamp_seconds"] == pytest.approx(0.05)
+
+
+def test_auto_fill_without_nudge_uses_exact_timestamps(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    saved = _track_with_beats_api(db_path, beat_count=300)
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST",
+            f"/api/tracks/{saved['id']}/pads/auto-fill", {})
+
+    assert status == 200
+    pads = payload["pads"]
+    assert pads[0]["timestamp_seconds"] == 0.0

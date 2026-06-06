@@ -110,6 +110,7 @@ def autofill_pads(
     phrase_length: int = DEFAULT_PHRASE_LENGTH,
     preset_name: str | None = None,
     total_duration_seconds: float | None = None,
+    nudge_seconds: float = 0.0,
     database_path: str | Path = "djcuecraft.sqlite3",
 ) -> list[dict[str, Any]]:
     """Place pads from stored beat timestamps.
@@ -120,8 +121,9 @@ def autofill_pads(
     is not supplied). When ``preset_name`` is None the classic phrase-based
     mode is used (pads at beats 0, phrase_length, 2*phrase_length, …).
 
-    Manual pads are preserved in both modes. Raises ValueError when the
-    track has no stored beats yet.
+    ``nudge_seconds`` is added to every placed timestamp, shifting pads to
+    match a user-adjusted beat grid.  Manual pads are always preserved.
+    Raises ValueError when the track has no stored beats yet.
     """
     if phrase_length <= 0:
         raise ValueError("Phrase length must be a positive number of beats.")
@@ -136,10 +138,12 @@ def autofill_pads(
         existing = {row["pad_index"]: row for row in database.list_pads(connection, track_id)}
         if preset_name is not None:
             _autofill_from_preset(
-                connection, track_id, preset_name, beats, total_duration_seconds, existing
+                connection, track_id, preset_name, beats, total_duration_seconds, existing,
+                nudge_seconds,
             )
         else:
-            _autofill_from_phrase(connection, track_id, phrase_length, beats, existing)
+            _autofill_from_phrase(connection, track_id, phrase_length, beats, existing,
+                                 nudge_seconds)
 
     return list_pads_for_track(track_id, database_path)
 
@@ -200,6 +204,7 @@ def _autofill_from_phrase(
     phrase_length: int,
     beats: list[float],
     existing: dict[int, Any],
+    nudge_seconds: float = 0.0,
 ) -> None:
     for pad_index in range(PAD_COUNT):
         current = existing.get(pad_index)
@@ -215,7 +220,7 @@ def _autofill_from_phrase(
             track_id=track_id,
             pad_index=pad_index,
             label=_phrase_label(pad_index),
-            timestamp_seconds=beats[beat_index],
+            timestamp_seconds=max(0.0, beats[beat_index] + nudge_seconds),
             beat_index=beat_index,
             source=SOURCE_AUTO,
         )
@@ -228,6 +233,7 @@ def _autofill_from_preset(
     beats: list[float],
     total_duration_seconds: float | None,
     existing: dict[int, Any],
+    nudge_seconds: float = 0.0,
 ) -> None:
     from dj_library_prep.beat_analyzer import CUE_PRESETS, _nearest_beat_index
 
@@ -262,7 +268,7 @@ def _autofill_from_preset(
             track_id=track_id,
             pad_index=pad_index,
             label=cue.cue_label,
-            timestamp_seconds=timestamp,
+            timestamp_seconds=max(0.0, timestamp + nudge_seconds),
             beat_index=beat_index,
             source=SOURCE_AUTO,
         )

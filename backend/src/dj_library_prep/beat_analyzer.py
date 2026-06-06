@@ -166,7 +166,7 @@ def detect_beat_timestamps(path: str | Path) -> BeatAnalysisResult:
 
     try:
         total_duration_seconds = float(librosa.get_duration(path=path))
-        audio, sample_rate = librosa.load(path, mono=True, duration=180)
+        audio, sample_rate = librosa.load(path, mono=True)
         onset_envelope = librosa.onset.onset_strength(y=audio, sr=sample_rate)
         _, beat_frames = librosa.beat.beat_track(
             y=audio,

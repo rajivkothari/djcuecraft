@@ -90,6 +90,7 @@ def detect_bpm(path: str | Path) -> BpmResult:
         ) from exc
 
     try:
+        # 120s sample is sufficient for BPM; beat_analyzer loads the full track
         audio, sample_rate = librosa.load(path, mono=True, duration=120)
         onset_envelope = librosa.onset.onset_strength(y=audio, sr=sample_rate)
         tempo = librosa.feature.tempo(onset_envelope=onset_envelope, sr=sample_rate)
