@@ -125,6 +125,23 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                     return
                 self._write_json({"track": track})
                 return
+            if len(parts) == 3 and parts[:2] == ["api", "cue-points"]:
+                try:
+                    cue_id = int(parts[2])
+                    payload = self._read_json()
+                    new_label = str(payload.get("cue_label", "")).strip()
+                    if not new_label:
+                        raise ValueError("cue_label must not be empty.")
+                    with database.connect(database_path) as connection:
+                        updated = database.update_cue_label(connection, cue_id, new_label)
+                    if updated is None:
+                        self._write_json({"error": "Cue point not found."}, status=404)
+                        return
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"cue_point": dict(updated)})
+                return
             self._write_json({"error": "Not found"}, status=404)
 
         def _read_json(self) -> dict:

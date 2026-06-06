@@ -177,6 +177,102 @@ def test_analyze_beats_endpoint_passes_ui_cue_template(tmp_path, monkeypatch) ->
     assert payload["summary"]["stored_beats"] == 40
 
 
+def test_patch_cue_point_renames_label(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.insert_missing_cue_points(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            cue_points=[
+                {
+                    "cue_label": "Intro",
+                    "beat_index": 0,
+                    "timestamp_seconds": 0.0,
+                    "cue_confidence": 0.8,
+                    "review_status": "pending",
+                }
+            ],
+        )
+        connection.commit()
+        cue = database.list_cue_points(connection)[0]
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(
+            server,
+            "PATCH",
+            f"/api/cue-points/{cue['id']}",
+            {"cue_label": "Drop"},
+        )
+
+    assert status == 200
+    assert payload["cue_point"]["cue_label"] == "Drop"
+    assert payload["cue_point"]["id"] == cue["id"]
+    assert payload["cue_point"]["beat_index"] == 0
+
+    with database.connect(db_path) as connection:
+        updated = database.list_cue_points(connection)[0]
+    assert updated["cue_label"] == "Drop"
+
+
+def test_patch_cue_point_rejects_empty_label(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.insert_missing_cue_points(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            cue_points=[
+                {
+                    "cue_label": "Intro",
+                    "beat_index": 0,
+                    "timestamp_seconds": 0.0,
+                    "cue_confidence": 0.8,
+                    "review_status": "pending",
+                }
+            ],
+        )
+        connection.commit()
+        cue = database.list_cue_points(connection)[0]
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(
+            server,
+            "PATCH",
+            f"/api/cue-points/{cue['id']}",
+            {"cue_label": "   "},
+        )
+
+    assert status == 400
+    assert "empty" in payload["error"].lower()
+
+    with database.connect(db_path) as connection:
+        unchanged = database.list_cue_points(connection)[0]
+    assert unchanged["cue_label"] == "Intro"
+
+
 @contextmanager
 def _running_api(database_path, frontend_dir):
     handler = _handler_factory(frontend_dir, database_path)

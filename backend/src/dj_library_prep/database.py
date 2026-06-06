@@ -511,6 +511,26 @@ def insert_missing_cue_points(
     return missing_cue_points
 
 
+def get_cue_point_by_id(
+    connection: sqlite3.Connection, cue_id: int
+) -> sqlite3.Row | None:
+    cursor = connection.execute("SELECT * FROM cue_points WHERE id = ?", (cue_id,))
+    return cursor.fetchone()
+
+
+def update_cue_label(
+    connection: sqlite3.Connection,
+    cue_id: int,
+    new_label: str,
+) -> sqlite3.Row | None:
+    connection.execute(
+        "UPDATE cue_points SET cue_label = ?, updated_at = ? WHERE id = ?",
+        (new_label, utc_now_iso(), cue_id),
+    )
+    connection.commit()
+    return get_cue_point_by_id(connection, cue_id)
+
+
 def list_cue_points(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     cursor = connection.execute(
         """

@@ -163,12 +163,14 @@ function renderCuePoints(cuePoints) {
 
   for (const cuePoint of cuePoints) {
     const row = document.createElement("tr");
+    row.dataset.cueId = cuePoint.id;
     row.appendChild(cueCell(cuePoint.file_name || cuePoint.file_path));
-    row.appendChild(cueCell(cuePoint.cue_label));
+    row.appendChild(cueLabelCell(cuePoint));
     row.appendChild(cueCell(cuePoint.beat_index));
     row.appendChild(cueCell(formatSeconds(cuePoint.timestamp_seconds)));
     row.appendChild(cueCell(formatConfidence(cuePoint.cue_confidence)));
     row.appendChild(cueCell(cuePoint.review_status));
+    row.appendChild(cueActionsCell(row, cuePoint));
     cueRowsEl.appendChild(row);
   }
 }
@@ -177,6 +179,110 @@ function cueCell(value) {
   const cell = document.createElement("td");
   cell.textContent = valueOrDash(value);
   return cell;
+}
+
+function cueLabelCell(cuePoint) {
+  const cell = document.createElement("td");
+  const label = document.createElement("span");
+  label.className = "cueLabelText";
+  label.textContent = valueOrDash(cuePoint.cue_label);
+  cell.appendChild(label);
+  return cell;
+}
+
+function cueActionsCell(row, cuePoint) {
+  const cell = document.createElement("td");
+  const editBtn = document.createElement("button");
+  editBtn.className = "cueEditBtn secondaryButton";
+  editBtn.type = "button";
+  editBtn.title = "Rename cue";
+  editBtn.setAttribute("aria-label", "Rename cue");
+  editBtn.innerHTML = "&#9998;";
+
+  editBtn.addEventListener("click", () => {
+    startCueRename(row, cuePoint.id, editBtn);
+  });
+
+  cell.appendChild(editBtn);
+  return cell;
+}
+
+function startCueRename(row, cueId, editBtn) {
+  const labelCell = row.cells[1];
+  const labelSpan = labelCell.querySelector(".cueLabelText");
+  const currentLabel = labelSpan.textContent === "-" ? "" : labelSpan.textContent;
+
+  const input = document.createElement("input");
+  input.className = "cueLabelInput";
+  input.value = currentLabel;
+  input.setAttribute("aria-label", "New cue name");
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "cueRenameSave";
+  saveBtn.textContent = "Save";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "secondaryButton cueRenameCancel";
+  cancelBtn.textContent = "Cancel";
+
+  const actionsCell = row.cells[6];
+
+  labelSpan.hidden = true;
+  labelCell.appendChild(input);
+  editBtn.hidden = true;
+  actionsCell.appendChild(saveBtn);
+  actionsCell.appendChild(cancelBtn);
+  input.focus();
+  input.select();
+
+  function finishRename() {
+    labelSpan.hidden = false;
+    input.remove();
+    saveBtn.remove();
+    cancelBtn.remove();
+    editBtn.hidden = false;
+  }
+
+  cancelBtn.addEventListener("click", finishRename);
+
+  saveBtn.addEventListener("click", async () => {
+    const newLabel = input.value.trim();
+    if (!newLabel) {
+      input.focus();
+      return;
+    }
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    try {
+      const response = await fetch(`/api/cue-points/${cueId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cue_label: newLabel }),
+      });
+      if (!response.ok) {
+        const err = await responseErrorMessage(response, "Rename failed");
+        labelCell.querySelector(".cueLabelText").hidden = false;
+        input.remove();
+        saveBtn.remove();
+        cancelBtn.remove();
+        editBtn.hidden = false;
+        editBtn.title = err;
+        return;
+      }
+      const result = await response.json();
+      labelSpan.textContent = result.cue_point.cue_label;
+      finishRename();
+    } catch {
+      finishRename();
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") saveBtn.click();
+    if (e.key === "Escape") cancelBtn.click();
+  });
 }
 
 async function saveTrack(row, forcedStatus = null) {

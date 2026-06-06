@@ -176,12 +176,13 @@ table {
   min-width: 860px;
 }
 
-.cueTable th:nth-child(1) { width: 260px; }
+.cueTable th:nth-child(1) { width: 240px; }
 .cueTable th:nth-child(2) { width: 170px; }
-.cueTable th:nth-child(3) { width: 85px; }
-.cueTable th:nth-child(4) { width: 110px; }
-.cueTable th:nth-child(5) { width: 120px; }
-.cueTable th:nth-child(6) { width: 130px; }
+.cueTable th:nth-child(3) { width: 75px; }
+.cueTable th:nth-child(4) { width: 100px; }
+.cueTable th:nth-child(5) { width: 110px; }
+.cueTable th:nth-child(6) { width: 110px; }
+.cueTable th:nth-child(7) { width: 90px; }
 
 th,
 td {
@@ -316,6 +317,35 @@ dd {
 .historyItem {
   border-top: 1px solid var(--line);
   padding: 6px 0;
+}
+
+.cueEditBtn {
+  font-size: 14px;
+  min-height: 26px;
+  padding: 0 7px;
+}
+
+.cueLabelInput {
+  display: block;
+  min-height: 28px;
+  width: 100%;
+}
+
+.cueRenameSave {
+  display: block;
+  font-size: 12px;
+  min-height: 26px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.cueRenameCancel {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  min-height: 26px;
+  padding: 0 8px;
+  width: 100%;
 }
 
 @media (max-width: 760px) {

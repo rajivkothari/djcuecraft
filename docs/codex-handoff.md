@@ -89,6 +89,26 @@ A helper `_create_version_2_database()` was added to `test_database.py` to suppo
 
 ---
 
+---
+
+## Cue Point Rename (Added After P0)
+
+**Files changed:** `database.py`, `local_api.py`, `frontend/index.html`, `frontend/app.js`, `frontend/styles.css`
+**Tests added:** `test_local_api.py` (2 new tests)
+
+**What changed:**
+
+The cue table in the review UI now has an Actions column with a pencil (✎) edit button on every row. Clicking it turns the Cue label cell into an inline text input with Save and Cancel buttons. Enter and Escape are keyboard shortcuts. On save, a `PATCH /api/cue-points/{id}` request is sent with `{"cue_label": "new name"}`. The label updates in place on success without reloading the table.
+
+**Backend:**
+- `database.update_cue_label(connection, cue_id, new_label)` — updates `cue_label` and `updated_at`, returns the updated row
+- `database.get_cue_point_by_id(connection, cue_id)` — used internally by update and also available for other callers
+- `PATCH /api/cue-points/{id}` in `local_api.py` — validates non-empty label, calls update, returns `{"cue_point": {...}}`. Returns 400 for empty/whitespace labels, 404 for unknown IDs.
+
+**Note:** This endpoint only renames the label. It does not change `review_status`, `beat_index`, or `timestamp_seconds`. The cue review workflow (P2-3) will layer on top of this when built — it will need its own `PATCH /api/cue-points/{id}` fields for `review_status`.
+
+---
+
 ## Remaining Backlog (Not Yet Implemented)
 
 ### P1 — Should Fix Before Broader Testing
