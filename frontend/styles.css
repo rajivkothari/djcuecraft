@@ -163,26 +163,9 @@ h2 {
 
 table {
   border-collapse: collapse;
-  min-width: 1280px;
   table-layout: fixed;
   width: 100%;
 }
-
-.cueShell {
-  max-height: 340px;
-}
-
-.cueTable {
-  min-width: 860px;
-}
-
-.cueTable th:nth-child(1) { width: 240px; }
-.cueTable th:nth-child(2) { width: 170px; }
-.cueTable th:nth-child(3) { width: 75px; }
-.cueTable th:nth-child(4) { width: 100px; }
-.cueTable th:nth-child(5) { width: 110px; }
-.cueTable th:nth-child(6) { width: 110px; }
-.cueTable th:nth-child(7) { width: 90px; }
 
 th,
 td {
@@ -202,12 +185,65 @@ th {
   z-index: 1;
 }
 
-th:nth-child(1) { width: 250px; }
-th:nth-child(2) { width: 260px; }
-th:nth-child(3) { width: 310px; }
-th:nth-child(4) { width: 150px; }
-th:nth-child(5) { width: 145px; }
-th:nth-child(6) { width: 150px; }
+/* Collapsed track table: caret | Track | Artist/Title | Confidence | Status */
+th.caretCol,
+td.caretCol { width: 34px; padding-left: 12px; padding-right: 0; }
+thead th:nth-child(2) { width: 34%; }
+thead th:nth-child(3) { width: 34%; }
+thead th:nth-child(4) { width: 110px; }
+thead th:nth-child(5) { width: 130px; }
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 2px 4px;
+}
+
+.caret {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summaryRow td {
+  vertical-align: middle;
+}
+
+.detailRow > td {
+  background: #f7fafc;
+  padding: 14px 16px;
+}
+
+.detailGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.detailBlock h3 {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.statusLabel {
+  margin-bottom: 10px;
+}
+
+.statusBadge {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 2px 10px;
+}
+
+.status-approved { background: #d8efe6; color: #0f5132; }
+.status-edited { background: #d8e7ef; color: #0c4a6e; }
+.status-pending { background: #eef2f5; color: #475569; }
+.status-needs_review { background: #fde8e8; color: #a33a3a; }
+.status-rejected { background: #f1d6d6; color: #7f1d1d; }
+.status-skipped { background: #eceff2; color: #64748b; }
 
 .trackCell strong,
 .trackCell span {
@@ -546,7 +582,7 @@ main {
 .padButtons {
   display: grid;
   gap: 6px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .padButtons button {

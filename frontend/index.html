@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DJ CueCraft Review</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <header class="topbar">
@@ -30,68 +30,16 @@
     </header>
 
     <main>
-      <section class="toolPanel" aria-labelledby="autoCueTitle">
-        <div class="panelHeader">
-          <div>
-            <h2 id="autoCueTitle">Auto Cues</h2>
-            <p id="cueState">Idle</p>
-          </div>
-          <div class="buttonRow">
-            <button id="analyzeCueButton" type="button">Analyze</button>
-            <button id="refreshCueButton" class="secondaryButton" type="button">Refresh Cues</button>
-          </div>
-        </div>
-
-        <div class="cueControls">
-          <label class="wideField">
-            Music folder
-            <div class="folderInputRow">
-              <input id="cueFolderPath" autocomplete="off" placeholder="Paste a path or click Browse" />
-              <button id="browseFolderButton" class="secondaryButton" type="button">Browse…</button>
-            </div>
-          </label>
-          <label>
-            Preset
-            <select id="cuePreset">
-              <option value="starter">starter</option>
-              <option value="phrase">phrase</option>
-              <option value="extended">extended</option>
-            </select>
-          </label>
-          <label class="wideField">
-            Custom cues
-            <textarea id="cueTemplateRows" rows="3"></textarea>
-          </label>
-        </div>
-
-        <div class="tableShell cueShell">
-          <table class="cueTable">
-            <thead>
-              <tr>
-                <th>Track</th>
-                <th>Cue</th>
-                <th>Beat</th>
-                <th>Time</th>
-                <th>Confidence</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="cueRows"></tbody>
-          </table>
-        </div>
-      </section>
-
+      <p class="hint">Click a track to edit its metadata and load it into the cue editor below.</p>
       <div class="tableShell">
         <table>
           <thead>
             <tr>
+              <th class="caretCol"></th>
               <th>Track</th>
-              <th>Original Metadata</th>
-              <th>Suggested Metadata</th>
+              <th>Artist / Title</th>
               <th>Confidence</th>
               <th>Status</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="trackRows"></tbody>
@@ -117,7 +65,9 @@
       </div>
       <canvas id="waveform" class="waveform" height="120"></canvas>
       <div class="padBar">
-        <button id="autoFillPadsButton" type="button" disabled>Auto-fill pads (phrase)</button>
+        <button id="analyzeBeatsButton" type="button" disabled>Analyze beats</button>
+        <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill pads (phrase)</button>
+        <button id="clearAllPadsButton" class="secondaryButton" type="button" disabled>Clear all</button>
         <span id="padState" class="padState"></span>
       </div>
       <div id="padGrid" class="padGrid"></div>
@@ -133,68 +83,84 @@
         <div class="padButtons">
           <button class="padJump" type="button">Jump</button>
           <button class="padSet secondaryButton" type="button" title="Set to current playhead">Set</button>
+          <button class="padClear secondaryButton" type="button" title="Clear this pad">Clear</button>
         </div>
       </div>
     </template>
 
     <template id="trackRowTemplate">
-      <tr>
+      <tr class="summaryRow">
+        <td class="caretCol"><span class="caret">▸</span></td>
         <td class="trackCell">
           <strong data-field="file_name"></strong>
           <span data-field="file_path"></span>
         </td>
-        <td>
-          <dl class="metadataList">
-            <div><dt>Artist</dt><dd data-field="artist"></dd></div>
-            <div><dt>Title</dt><dd data-field="title"></dd></div>
-            <div><dt>Album</dt><dd data-field="album"></dd></div>
-            <div><dt>Year</dt><dd data-field="year"></dd></div>
-            <div><dt>Genre</dt><dd data-field="original_genre"></dd></div>
-          </dl>
-          <div class="warnings" data-field="missing_fields"></div>
-        </td>
-        <td>
-          <div class="suggestionBox">
-            <strong data-field="suggested_normalized_label"></strong>
-            <span data-field="review_required"></span>
-            <p data-field="reason"></p>
+        <td data-field="summary_artist_title"></td>
+        <td data-field="summary_confidence"></td>
+        <td><span class="statusBadge" data-field="summary_status"></span></td>
+      </tr>
+      <tr class="detailRow" hidden>
+        <td colspan="5">
+          <div class="detailGrid">
+            <div class="detailBlock">
+              <h3>Original Metadata</h3>
+              <dl class="metadataList">
+                <div><dt>Artist</dt><dd data-field="artist"></dd></div>
+                <div><dt>Title</dt><dd data-field="title"></dd></div>
+                <div><dt>Album</dt><dd data-field="album"></dd></div>
+                <div><dt>Year</dt><dd data-field="year"></dd></div>
+                <div><dt>Genre</dt><dd data-field="original_genre"></dd></div>
+              </dl>
+              <div class="warnings" data-field="missing_fields"></div>
+            </div>
+
+            <div class="detailBlock">
+              <h3>Suggested Metadata</h3>
+              <div class="suggestionBox">
+                <strong data-field="suggested_normalized_label"></strong>
+                <span data-field="review_required"></span>
+                <p data-field="reason"></p>
+              </div>
+              <div class="editGrid">
+                <label>Decade <input data-input="normalized_decade" /></label>
+                <label>Primary <input data-input="normalized_primary_genre" /></label>
+                <label>Subgenre <input data-input="normalized_subgenre" /></label>
+                <label>Tags <input data-input="dj_use_tags" /></label>
+              </div>
+              <dl class="metadataList compact">
+                <div><dt>Metadata</dt><dd data-field="metadata_confidence"></dd></div>
+                <div><dt>Genre</dt><dd data-field="genre_confidence"></dd></div>
+                <div><dt>BPM</dt><dd data-field="bpm_confidence"></dd></div>
+              </dl>
+            </div>
+
+            <div class="detailBlock">
+              <h3>Review</h3>
+              <label class="statusLabel">Status
+                <select data-input="review_status">
+                  <option value="needs_review">needs_review</option>
+                  <option value="pending">pending</option>
+                  <option value="approved">approved</option>
+                  <option value="edited">edited</option>
+                  <option value="rejected">rejected</option>
+                  <option value="skipped">skipped</option>
+                </select>
+              </label>
+              <div class="actionCell">
+                <button data-action="approve" type="button">Approve</button>
+                <button class="secondaryButton" data-action="save-edit" type="button">Save Edit</button>
+                <button class="secondaryButton" data-action="reject" type="button">Reject</button>
+                <button class="secondaryButton" data-action="skip" type="button">Skip</button>
+                <button class="secondaryButton" data-action="history" type="button">History</button>
+                <span class="rowState" data-field="row_state"></span>
+                <div class="historyPanel" data-field="history_panel"></div>
+              </div>
+            </div>
           </div>
-          <div class="editGrid">
-            <label>Decade <input data-input="normalized_decade" /></label>
-            <label>Primary <input data-input="normalized_primary_genre" /></label>
-            <label>Subgenre <input data-input="normalized_subgenre" /></label>
-            <label>Tags <input data-input="dj_use_tags" /></label>
-          </div>
-        </td>
-        <td>
-          <dl class="metadataList compact">
-            <div><dt>Metadata</dt><dd data-field="metadata_confidence"></dd></div>
-            <div><dt>Genre</dt><dd data-field="genre_confidence"></dd></div>
-            <div><dt>BPM</dt><dd data-field="bpm_confidence"></dd></div>
-          </dl>
-        </td>
-        <td>
-          <select data-input="review_status">
-            <option value="needs_review">needs_review</option>
-            <option value="pending">pending</option>
-            <option value="approved">approved</option>
-            <option value="edited">edited</option>
-            <option value="rejected">rejected</option>
-            <option value="skipped">skipped</option>
-          </select>
-        </td>
-        <td class="actionCell">
-          <button data-action="approve" type="button">Approve</button>
-          <button class="secondaryButton" data-action="save-edit" type="button">Save Edit</button>
-          <button class="secondaryButton" data-action="reject" type="button">Reject</button>
-          <button class="secondaryButton" data-action="skip" type="button">Skip</button>
-          <button class="secondaryButton" data-action="history" type="button">History</button>
-          <span class="rowState" data-field="row_state"></span>
-          <div class="historyPanel" data-field="history_panel"></div>
         </td>
       </tr>
     </template>
 
-    <script src="./app.js?v=3"></script>
+    <script src="./app.js?v=4"></script>
   </body>
 </html>

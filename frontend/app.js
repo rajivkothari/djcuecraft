@@ -3,14 +3,6 @@ const template = document.querySelector("#trackRowTemplate");
 const summaryEl = document.querySelector("#summary");
 const statusFilter = document.querySelector("#statusFilter");
 const refreshButton = document.querySelector("#refreshButton");
-const cueRowsEl = document.querySelector("#cueRows");
-const cueStateEl = document.querySelector("#cueState");
-const cueFolderPathInput = document.querySelector("#cueFolderPath");
-const cuePresetSelect = document.querySelector("#cuePreset");
-const cueTemplateRowsInput = document.querySelector("#cueTemplateRows");
-const analyzeCueButton = document.querySelector("#analyzeCueButton");
-const refreshCueButton = document.querySelector("#refreshCueButton");
-const browseFolderButton = document.querySelector("#browseFolderButton");
 
 const editorTrackName = document.querySelector("#editorTrackName");
 const editorTrackMeta = document.querySelector("#editorTrackMeta");
@@ -20,7 +12,9 @@ const playButton = document.querySelector("#playButton");
 const stopButton = document.querySelector("#stopButton");
 const metronomeToggle = document.querySelector("#metronomeToggle");
 const waveformCanvas = document.querySelector("#waveform");
+const analyzeBeatsButton = document.querySelector("#analyzeBeatsButton");
 const autoFillPadsButton = document.querySelector("#autoFillPadsButton");
+const clearAllPadsButton = document.querySelector("#clearAllPadsButton");
 const padState = document.querySelector("#padState");
 const padGrid = document.querySelector("#padGrid");
 const padTemplate = document.querySelector("#padTemplate");
@@ -35,12 +29,13 @@ const editableFields = [
 
 refreshButton.addEventListener("click", loadTracks);
 statusFilter.addEventListener("change", loadTracks);
-analyzeCueButton.addEventListener("click", analyzeCues);
-refreshCueButton.addEventListener("click", loadCuePoints);
-browseFolderButton.addEventListener("click", browseForFolder);
 
 loadTracks();
-loadCuePoints();
+
+/* ---------------------------------------------------------------------------
+ * Track list: each row is a collapsed summary. Clicking it expands an inline
+ * metadata editor and loads the track into the cue editor below.
+ * ------------------------------------------------------------------------ */
 
 async function loadTracks() {
   rowsEl.innerHTML = "";
@@ -49,9 +44,7 @@ async function loadTracks() {
   const url = status ? `/api/tracks?status=${encodeURIComponent(status)}` : "/api/tracks";
   try {
     const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Track load failed");
-    }
+    if (!response.ok) throw new Error("Track load failed");
     const payload = await response.json();
     renderTracks(payload.tracks || []);
   } catch (error) {
@@ -61,26 +54,43 @@ async function loadTracks() {
 }
 
 function renderTracks(tracks) {
+  rowsEl.innerHTML = "";
   summaryEl.textContent = `${tracks.length} tracks`;
   if (tracks.length === 0) {
     renderTableMessage("No tracks");
     return;
   }
-
   for (const track of tracks) {
-    rowsEl.appendChild(renderTrackRow(track));
+    renderTrackGroup(track);
   }
 }
 
-function renderTrackRow(track) {
-  const row = template.content.firstElementChild.cloneNode(true);
-  row.dataset.trackId = track.id;
+function renderTrackGroup(track) {
+  const fragment = template.content.cloneNode(true);
+  const summaryRow = fragment.querySelector(".summaryRow");
+  const detailRow = fragment.querySelector(".detailRow");
+  summaryRow.dataset.trackId = track.id;
+  detailRow.dataset.trackId = track.id;
 
-  for (const element of row.querySelectorAll("[data-field]")) {
+  setFieldText(summaryRow, "file_name", track.file_name);
+  setFieldText(summaryRow, "file_path", track.file_path);
+  setFieldText(
+    summaryRow,
+    "summary_artist_title",
+    [track.artist, track.title].filter(Boolean).join(" — ") || "—",
+  );
+  setFieldText(summaryRow, "summary_confidence", formatConfidence(track.genre_confidence));
+  const badge = summaryRow.querySelector('[data-field="summary_status"]');
+  if (badge) {
+    badge.textContent = track.review_status;
+    badge.className = `statusBadge status-${track.review_status}`;
+  }
+
+  for (const element of detailRow.querySelectorAll("[data-field]")) {
     const field = element.dataset.field;
     if (field === "missing_fields") {
       element.textContent = (track.missing_fields || []).join("; ");
-    } else if (field === "row_state") {
+    } else if (field === "row_state" || field === "history_panel") {
       element.textContent = "";
     } else if (field === "review_required") {
       element.textContent = track.review_required ? "Review required" : "Ready to approve";
@@ -93,244 +103,50 @@ function renderTrackRow(track) {
   }
 
   for (const field of editableFields) {
-    const input = row.querySelector(`[data-input="${field}"]`);
-    input.value = track[field] || "";
+    const input = detailRow.querySelector(`[data-input="${field}"]`);
+    if (input) input.value = track[field] || "";
   }
 
-  row.querySelector('[data-action="approve"]').addEventListener("click", () => {
-    saveTrack(row, "approved");
+  detailRow.querySelector('[data-action="approve"]').addEventListener("click", () => {
+    saveTrack(detailRow, summaryRow, "approved");
   });
-  row.querySelector('[data-action="save-edit"]').addEventListener("click", () => {
-    saveTrack(row, "edited");
+  detailRow.querySelector('[data-action="save-edit"]').addEventListener("click", () => {
+    saveTrack(detailRow, summaryRow, "edited");
   });
-  row.querySelector('[data-action="reject"]').addEventListener("click", () => {
-    saveTrack(row, "rejected");
+  detailRow.querySelector('[data-action="reject"]').addEventListener("click", () => {
+    saveTrack(detailRow, summaryRow, "rejected");
   });
-  row.querySelector('[data-action="skip"]').addEventListener("click", () => {
-    saveTrack(row, "skipped");
+  detailRow.querySelector('[data-action="skip"]').addEventListener("click", () => {
+    saveTrack(detailRow, summaryRow, "skipped");
   });
-  row.querySelector('[data-action="history"]').addEventListener("click", () => {
-    loadHistory(row);
+  detailRow.querySelector('[data-action="history"]').addEventListener("click", () => {
+    loadHistory(detailRow);
   });
 
-  const trackCell = row.querySelector(".trackCell");
-  trackCell.classList.add("selectable");
-  row.classList.add("selectableRow");
-  row.addEventListener("click", (event) => {
-    // Ignore clicks on interactive controls so editing fields/buttons
-    // does not also re-select the track.
+  summaryRow.classList.add("selectableRow");
+  summaryRow.addEventListener("click", (event) => {
     if (event.target.closest("input, select, button, textarea, .historyPanel")) {
       return;
     }
-    selectTrackForEditor(track, row);
-  });
-  return row;
-}
-
-async function browseForFolder() {
-  browseFolderButton.disabled = true;
-  browseFolderButton.textContent = "Opening…";
-  try {
-    const response = await fetch("/api/browse-folder");
-    if (!response.ok) throw new Error();
-    const payload = await response.json();
-    if (payload.folder) {
-      cueFolderPathInput.value = payload.folder;
-    }
-  } catch {
-    // dialog cancelled or unavailable — leave input unchanged
-  } finally {
-    browseFolderButton.disabled = false;
-    browseFolderButton.textContent = "Browse…";
-  }
-}
-
-async function analyzeCues() {
-  const folder = cueFolderPathInput.value.trim();
-  const cues = cueTemplateRowsInput.value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  analyzeCueButton.disabled = true;
-  cueStateEl.textContent = "Analyzing...";
-
-  try {
-    const response = await fetch("/api/analyze-beats", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        folder,
-        cue_preset: cuePresetSelect.value,
-        cues,
-      }),
-    });
-
-    if (!response.ok) {
-      cueStateEl.textContent = await responseErrorMessage(response, "Analyze failed");
-      return;
-    }
-
-    const payload = await response.json();
-    const summary = payload.summary || {};
-    renderCuePoints(payload.cue_points || []);
-    cueStateEl.textContent = `${summary.inserted_cue_points || 0} cues inserted`;
-    loadTracks();
-  } catch (error) {
-    cueStateEl.textContent = "Analyze failed";
-  } finally {
-    analyzeCueButton.disabled = false;
-  }
-}
-
-async function loadCuePoints() {
-  cueStateEl.textContent = "Loading cues...";
-  try {
-    const response = await fetch("/api/cue-points");
-    if (!response.ok) {
-      throw new Error("Cue load failed");
-    }
-    const payload = await response.json();
-    renderCuePoints(payload.cue_points || []);
-    cueStateEl.textContent = `${(payload.cue_points || []).length} cues`;
-  } catch (error) {
-    cueStateEl.textContent = "Unable to load cues";
-    renderCueTableMessage("Unable to load cues");
-  }
-}
-
-function renderCuePoints(cuePoints) {
-  cueRowsEl.innerHTML = "";
-  if (cuePoints.length === 0) {
-    renderCueTableMessage("No cues");
-    return;
-  }
-
-  for (const cuePoint of cuePoints) {
-    const row = document.createElement("tr");
-    row.dataset.cueId = cuePoint.id;
-    row.appendChild(cueCell(cuePoint.file_name || cuePoint.file_path));
-    row.appendChild(cueLabelCell(cuePoint));
-    row.appendChild(cueCell(cuePoint.beat_index));
-    row.appendChild(cueCell(formatSeconds(cuePoint.timestamp_seconds)));
-    row.appendChild(cueCell(formatConfidence(cuePoint.cue_confidence)));
-    row.appendChild(cueCell(cuePoint.review_status));
-    row.appendChild(cueActionsCell(row, cuePoint));
-    cueRowsEl.appendChild(row);
-  }
-}
-
-function cueCell(value) {
-  const cell = document.createElement("td");
-  cell.textContent = valueOrDash(value);
-  return cell;
-}
-
-function cueLabelCell(cuePoint) {
-  const cell = document.createElement("td");
-  const label = document.createElement("span");
-  label.className = "cueLabelText";
-  label.textContent = valueOrDash(cuePoint.cue_label);
-  cell.appendChild(label);
-  return cell;
-}
-
-function cueActionsCell(row, cuePoint) {
-  const cell = document.createElement("td");
-  const editBtn = document.createElement("button");
-  editBtn.className = "cueEditBtn secondaryButton";
-  editBtn.type = "button";
-  editBtn.title = "Rename cue";
-  editBtn.setAttribute("aria-label", "Rename cue");
-  editBtn.innerHTML = "&#9998;";
-
-  editBtn.addEventListener("click", () => {
-    startCueRename(row, cuePoint.id, editBtn);
-  });
-
-  cell.appendChild(editBtn);
-  return cell;
-}
-
-function startCueRename(row, cueId, editBtn) {
-  const labelCell = row.cells[1];
-  const labelSpan = labelCell.querySelector(".cueLabelText");
-  const currentLabel = labelSpan.textContent === "-" ? "" : labelSpan.textContent;
-
-  const input = document.createElement("input");
-  input.className = "cueLabelInput";
-  input.value = currentLabel;
-  input.setAttribute("aria-label", "New cue name");
-
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "button";
-  saveBtn.className = "cueRenameSave";
-  saveBtn.textContent = "Save";
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "secondaryButton cueRenameCancel";
-  cancelBtn.textContent = "Cancel";
-
-  const actionsCell = row.cells[6];
-
-  labelSpan.hidden = true;
-  labelCell.appendChild(input);
-  editBtn.hidden = true;
-  actionsCell.appendChild(saveBtn);
-  actionsCell.appendChild(cancelBtn);
-  input.focus();
-  input.select();
-
-  function finishRename() {
-    labelSpan.hidden = false;
-    input.remove();
-    saveBtn.remove();
-    cancelBtn.remove();
-    editBtn.hidden = false;
-  }
-
-  cancelBtn.addEventListener("click", finishRename);
-
-  saveBtn.addEventListener("click", async () => {
-    const newLabel = input.value.trim();
-    if (!newLabel) {
-      input.focus();
-      return;
-    }
-    saveBtn.disabled = true;
-    cancelBtn.disabled = true;
-    try {
-      const response = await fetch(`/api/cue-points/${cueId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cue_label: newLabel }),
-      });
-      if (!response.ok) {
-        const err = await responseErrorMessage(response, "Rename failed");
-        labelCell.querySelector(".cueLabelText").hidden = false;
-        input.remove();
-        saveBtn.remove();
-        cancelBtn.remove();
-        editBtn.hidden = false;
-        editBtn.title = err;
-        return;
-      }
-      const result = await response.json();
-      labelSpan.textContent = result.cue_point.cue_label;
-      finishRename();
-    } catch {
-      finishRename();
+    const willOpen = detailRow.hidden;
+    detailRow.hidden = !willOpen;
+    summaryRow.classList.toggle("expanded", willOpen);
+    const caret = summaryRow.querySelector(".caret");
+    if (caret) caret.textContent = willOpen ? "▾" : "▸";
+    if (willOpen) {
+      selectTrackForEditor(track, summaryRow);
     }
   });
 
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") saveBtn.click();
-    if (e.key === "Escape") cancelBtn.click();
-  });
+  rowsEl.appendChild(fragment);
 }
 
-async function saveTrack(row, forcedStatus = null) {
+function setFieldText(scope, field, value) {
+  const el = scope.querySelector(`[data-field="${field}"]`);
+  if (el) el.textContent = valueOrDash(value);
+}
+
+async function saveTrack(row, summaryRow, forcedStatus = null) {
   const trackId = row.dataset.trackId;
   const actionButtons = row.querySelectorAll("button[data-action]");
   const rowState = row.querySelector('[data-field="row_state"]');
@@ -371,6 +187,15 @@ async function saveTrack(row, forcedStatus = null) {
     reviewFlag.textContent = updated.review_required ? "Review required" : "Ready to approve";
     reviewFlag.className = updated.review_required ? "reviewFlag warningFlag" : "reviewFlag";
     rowState.textContent = "Saved";
+
+    if (summaryRow) {
+      const badge = summaryRow.querySelector('[data-field="summary_status"]');
+      if (badge) {
+        badge.textContent = updated.review_status;
+        badge.className = `statusBadge status-${updated.review_status}`;
+      }
+      setFieldText(summaryRow, "summary_confidence", formatConfidence(updated.genre_confidence));
+    }
   } catch (error) {
     rowState.textContent = "Save failed";
   } finally {
@@ -430,31 +255,10 @@ function renderTableMessage(message) {
   rowsEl.innerHTML = "";
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 6;
+  cell.colSpan = 5;
   cell.textContent = message;
   row.appendChild(cell);
   rowsEl.appendChild(row);
-}
-
-function renderCueTableMessage(message) {
-  cueRowsEl.innerHTML = "";
-  const row = document.createElement("tr");
-  const cell = document.createElement("td");
-  cell.colSpan = 6;
-  cell.textContent = message;
-  row.appendChild(cell);
-  cueRowsEl.appendChild(row);
-}
-
-function formatSeconds(value) {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) {
-    return String(value);
-  }
-  return `${numeric.toFixed(3)}s`;
 }
 
 async function responseErrorMessage(response, fallback) {
@@ -488,7 +292,9 @@ let rafId = null;
 
 playButton.addEventListener("click", togglePlay);
 stopButton.addEventListener("click", stopPlayback);
+analyzeBeatsButton.addEventListener("click", analyzeTrackBeats);
 autoFillPadsButton.addEventListener("click", autoFillPads);
+clearAllPadsButton.addEventListener("click", clearAllPads);
 metronomeToggle.addEventListener("change", () => {
   if (metronomeToggle.checked && isPlaying) {
     startMetronome();
@@ -526,7 +332,9 @@ async function selectTrackForEditor(track, rowEl) {
   editorTrackName.textContent = track.file_name || track.file_path || "Track";
   editorTrackMeta.textContent = [track.artist, track.title].filter(Boolean).join(" — ");
   editorBpm.textContent = track.bpm ? `BPM ${Number(track.bpm).toFixed(1)}` : "BPM —";
+  analyzeBeatsButton.disabled = false;
   autoFillPadsButton.disabled = false;
+  clearAllPadsButton.disabled = false;
 
   await loadPads(track.id);
   await loadAudio(track);
@@ -806,7 +614,7 @@ async function loadPads(trackId) {
   drawWaveform();
   padState.textContent = padsData.some((pad) => pad.timestamp_seconds != null)
     ? ""
-    : "No pad positions yet — Auto-fill or Set from the playhead";
+    : "No pad positions yet — Analyze beats, Auto-fill, or Set from the playhead";
 }
 
 function renderPads() {
@@ -826,6 +634,12 @@ function renderPads() {
 
     el.querySelector(".padSet").addEventListener("click", () => setPadFromPlayhead(pad.pad_index));
     el.querySelector(".padRename").addEventListener("click", () => renamePad(el, pad));
+
+    const clearBtn = el.querySelector(".padClear");
+    if (clearBtn) {
+      clearBtn.disabled = pad.timestamp_seconds == null;
+      clearBtn.addEventListener("click", () => clearPad(pad.pad_index));
+    }
 
     if (pad.source === "manual") el.classList.add("padManual");
     if (pad.timestamp_seconds == null) el.classList.add("padEmpty");
@@ -887,6 +701,66 @@ async function savePad(index, body) {
     await loadPads(selectedTrack.id);
   } catch (error) {
     padState.textContent = "Pad save failed";
+  }
+}
+
+async function clearPad(index) {
+  if (!selectedTrack) return;
+  try {
+    const response = await fetch(`/api/tracks/${selectedTrack.id}/pads/${index}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      padState.textContent = await responseErrorMessage(response, "Clear failed");
+      return;
+    }
+    await loadPads(selectedTrack.id);
+  } catch (error) {
+    padState.textContent = "Clear failed";
+  }
+}
+
+async function clearAllPads() {
+  if (!selectedTrack) return;
+  try {
+    const response = await fetch(`/api/tracks/${selectedTrack.id}/pads`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      padState.textContent = await responseErrorMessage(response, "Clear failed");
+      return;
+    }
+    const payload = await response.json();
+    padsData = payload.pads || [];
+    renderPads();
+    drawWaveform();
+    padState.textContent = "All pads cleared";
+  } catch (error) {
+    padState.textContent = "Clear failed";
+  }
+}
+
+async function analyzeTrackBeats() {
+  if (!selectedTrack) return;
+  analyzeBeatsButton.disabled = true;
+  padState.textContent = "Analyzing beats…";
+  try {
+    const response = await fetch(`/api/tracks/${selectedTrack.id}/analyze-beats`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      padState.textContent = await responseErrorMessage(response, "Beat analysis failed");
+      return;
+    }
+    const payload = await response.json();
+    padsData = payload.pads || [];
+    renderPads();
+    drawWaveform();
+    padState.textContent = `${payload.stored_beats || 0} beats detected — pads filled`;
+  } catch (error) {
+    padState.textContent = "Beat analysis failed";
+  } finally {
+    analyzeBeatsButton.disabled = false;
   }
 }
 
