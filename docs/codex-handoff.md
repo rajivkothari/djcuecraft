@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 132 tests pass. (No new backend tests — session 4 is frontend-only.)
+All 137 tests pass. (No new backend tests — session 4 is frontend-only.)
 
 ---
 
