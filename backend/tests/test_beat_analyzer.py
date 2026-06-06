@@ -224,6 +224,77 @@ def test_analyze_beats_fills_missing_cues_without_overwriting_existing_cues(
     assert cues[1]["timestamp_seconds"] == 32.0
 
 
+def test_failed_beat_analysis_preserves_existing_beats_and_cues(
+    tmp_path, monkeypatch
+) -> None:
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    audio_path = music_dir / "track.mp3"
+    audio_path.write_bytes(b"not real audio")
+    db_path = tmp_path / "tracks.sqlite3"
+
+    track = Track(
+        file_path=str(audio_path),
+        file_name=audio_path.name,
+        file_extension=".mp3",
+        review_status=ReviewStatus.PENDING,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved_track = database.list_tracks(connection)[0]
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            beat_timestamps=[float(index) for index in range(50)],
+            beat_confidence=0.8,
+        )
+        database.replace_cue_points(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            cue_points=[
+                {
+                    "cue_label": "Load",
+                    "beat_index": 4,
+                    "timestamp_seconds": 1.5,
+                    "cue_confidence": 0.42,
+                    "review_status": "approved",
+                }
+            ],
+        )
+        connection.commit()
+
+    # Detection now fails (returns no beats), e.g. moved/corrupt file.
+    monkeypatch.setattr(
+        beat_analyzer,
+        "detect_beat_timestamps",
+        lambda path: BeatAnalysisResult(beat_timestamps=[], beat_confidence=0.0),
+    )
+
+    summary = analyze_beats_for_folder(music_dir, db_path)
+
+    assert summary.total_files == 1
+    assert summary.failed_tracks == 1
+    assert summary.analyzed_tracks == 0
+    assert summary.stored_beats == 0
+    assert summary.proposed_cue_points == 0
+    assert summary.cue_points_needing_review == 0
+
+    with database.connect(db_path) as connection:
+        beats = database.list_beat_timestamps(connection)
+        cues = database.list_cue_points(connection)
+
+    # Existing beats and the approved cue must survive the failed re-analysis.
+    assert len(beats) == 50
+    assert beats[8]["timestamp_seconds"] == 8.0
+    assert [cue["cue_label"] for cue in cues] == ["Load"]
+    assert cues[0]["beat_index"] == 4
+    assert cues[0]["timestamp_seconds"] == 1.5
+    assert cues[0]["review_status"] == "approved"
+    assert audio_path.read_bytes() == b"not real audio"
+
+
 def test_database_initializes_beat_and_cue_tables(tmp_path) -> None:
     db_path = tmp_path / "tracks.sqlite3"
 

@@ -90,7 +90,10 @@ def analyze_beats_for_folder(
             track = _ensure_track(connection, path)
             result = detect_beat_timestamps(path)
             if not result.beat_timestamps:
+                # Detection failed: preserve any previously stored beats and
+                # cue points for this track instead of overwriting them.
                 failed_tracks += 1
+                continue
 
             cues = propose_cue_points(
                 result.beat_timestamps,
