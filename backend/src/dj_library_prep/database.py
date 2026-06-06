@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from dj_library_prep.models import Track, utc_now_iso
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 UNREVIEWED_STATUSES = ("pending", "needs_review")
 
@@ -702,9 +702,28 @@ def _migrate_review_history_audit_columns(connection: sqlite3.Connection) -> Non
     _ensure_column(connection, "review_history", "reason", "TEXT")
 
 
+def _migrate_track_lookup_indexes(connection: sqlite3.Connection) -> None:
+    indexes = {
+        row["name"]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+        )
+    }
+    statements = [
+        ("idx_beat_timestamps_track_id", "CREATE INDEX IF NOT EXISTS idx_beat_timestamps_track_id ON beat_timestamps(track_id)"),
+        ("idx_cue_points_track_id", "CREATE INDEX IF NOT EXISTS idx_cue_points_track_id ON cue_points(track_id)"),
+        ("idx_review_history_track_id", "CREATE INDEX IF NOT EXISTS idx_review_history_track_id ON review_history(track_id)"),
+        ("idx_correction_history_track_id", "CREATE INDEX IF NOT EXISTS idx_correction_history_track_id ON correction_history(track_id)"),
+    ]
+    for index_name, sql in statements:
+        if index_name not in indexes:
+            connection.execute(sql)
+
+
 MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     (1, _migrate_legacy_bpm_columns),
-    (CURRENT_SCHEMA_VERSION, _migrate_review_history_audit_columns),
+    (2, _migrate_review_history_audit_columns),
+    (CURRENT_SCHEMA_VERSION, _migrate_track_lookup_indexes),
 )
 
 

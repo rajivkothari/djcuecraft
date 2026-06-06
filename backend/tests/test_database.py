@@ -249,6 +249,42 @@ def test_save_track_rescan_refreshes_unreviewed_suggestions(tmp_path) -> None:
     assert history[0]["new_review_status"] == "pending"
 
 
+def test_initialize_creates_track_lookup_indexes(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    with database.connect(db_path) as connection:
+        indexes = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+
+    assert "idx_beat_timestamps_track_id" in indexes
+    assert "idx_cue_points_track_id" in indexes
+    assert "idx_review_history_track_id" in indexes
+    assert "idx_correction_history_track_id" in indexes
+
+
+def test_migration_adds_indexes_to_existing_database(tmp_path) -> None:
+    db_path = tmp_path / "pre_index.sqlite3"
+    _create_version_2_database(db_path)
+
+    with database.connect(db_path) as connection:
+        indexes = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+        schema_version = database.get_schema_version(connection)
+
+    assert "idx_beat_timestamps_track_id" in indexes
+    assert "idx_cue_points_track_id" in indexes
+    assert "idx_review_history_track_id" in indexes
+    assert "idx_correction_history_track_id" in indexes
+    assert schema_version == database.CURRENT_SCHEMA_VERSION
+
+
 def test_insert_missing_cue_points_preserves_existing_cues(tmp_path) -> None:
     db_path = tmp_path / "tracks.sqlite3"
     track = Track(
@@ -332,6 +368,87 @@ def _create_legacy_tracks_table(db_path) -> None:
             review_status TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+
+def _create_version_2_database(db_path) -> None:
+    """Schema at version 2 — has BPM columns and audit columns but no indexes."""
+    connection = sqlite3.connect(db_path)
+    connection.execute("PRAGMA user_version = 2")
+    connection.execute(
+        """
+        CREATE TABLE tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT NOT NULL UNIQUE,
+            file_name TEXT NOT NULL,
+            file_extension TEXT NOT NULL,
+            normalized_decade TEXT NOT NULL,
+            dj_use_tags TEXT NOT NULL,
+            metadata_confidence REAL NOT NULL,
+            genre_confidence REAL NOT NULL,
+            bpm REAL,
+            bpm_confidence REAL NOT NULL DEFAULT 0.0,
+            review_status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE beat_timestamps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id INTEGER,
+            file_path TEXT NOT NULL,
+            beat_index INTEGER NOT NULL,
+            timestamp_seconds REAL NOT NULL,
+            beat_confidence REAL NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE cue_points (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id INTEGER,
+            file_path TEXT NOT NULL,
+            cue_label TEXT NOT NULL,
+            beat_index INTEGER NOT NULL,
+            timestamp_seconds REAL NOT NULL,
+            cue_confidence REAL NOT NULL,
+            review_status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE review_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id INTEGER,
+            file_path TEXT NOT NULL,
+            action TEXT NOT NULL DEFAULT 'edit',
+            confidence_at_action REAL,
+            reason TEXT,
+            timestamp TEXT NOT NULL,
+            source TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE correction_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id INTEGER,
+            file_path TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            created_at TEXT NOT NULL
         )
         """
     )

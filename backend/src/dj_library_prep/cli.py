@@ -101,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="CSV output path",
     )
+    export_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        default=False,
+        help="Overwrite the output file if it already exists.",
+    )
     export_json_parser = subparsers.add_parser(
         "export-json",
         help="Export approved and edited metadata changes to JSON",
@@ -114,6 +120,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         required=True,
         help="JSON output path",
+    )
+    export_json_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        default=False,
+        help="Overwrite the output file if it already exists.",
     )
 
     import_parser = subparsers.add_parser(
@@ -139,6 +151,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--database",
         default="djcuecraft.sqlite3",
         help="SQLite database path. Defaults to djcuecraft.sqlite3",
+    )
+    bpm_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help=(
+            "Re-analyze and overwrite BPM even for tracks already marked "
+            "approved or edited. Without this flag those tracks are skipped."
+        ),
     )
 
     beat_parser = subparsers.add_parser(
@@ -207,12 +228,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "export-csv":
+        if _output_exists_and_no_overwrite(args.output, args.overwrite):
+            return 1
         exported_count = export_tracks_to_csv(args.database, args.output)
         print(f"Exported {exported_count} approved/edited tracks to {args.output}")
         print("No audio files, ID3 tags, or DJ software libraries were modified.")
         return 0
 
     if args.command == "export-json":
+        if _output_exists_and_no_overwrite(args.output, args.overwrite):
+            return 1
         exported_count = export_approved_tracks_to_json(args.database, args.output)
         print(f"Exported {exported_count} approved/edited tracks to {args.output}")
         print("No audio files, ID3 tags, or DJ software libraries were modified.")
@@ -224,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "analyze-bpm":
-        summary = analyze_bpm_for_folder(args.folder, args.database)
+        summary = analyze_bpm_for_folder(args.folder, args.database, force=args.force)
         _print_bpm_summary(summary)
         return 0
 
@@ -253,6 +278,16 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error(f"Unknown command: {args.command}")
     return 2
+
+
+def _output_exists_and_no_overwrite(output: str, overwrite: bool) -> bool:
+    if Path(output).exists() and not overwrite:
+        print(
+            f"Error: output file already exists: {output}\n"
+            "Use --overwrite to replace it."
+        )
+        return True
+    return False
 
 
 def _prepare_track(path: Path) -> Track:
@@ -320,6 +355,11 @@ def _print_bpm_summary(summary: BpmAnalysisSummary) -> None:
     print(f"  analyzed tracks: {summary.analyzed_tracks}")
     print(f"  tracks needing review: {summary.tracks_needing_review}")
     print(f"  failed tracks: {summary.failed_tracks}")
+    if summary.skipped_reviewed_tracks:
+        print(
+            f"  skipped (already reviewed): {summary.skipped_reviewed_tracks}"
+            " — use --force to re-analyze"
+        )
     print("No audio files were modified.")
 
 

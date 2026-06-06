@@ -11,6 +11,7 @@ from dj_library_prep.scanner import scan_audio_files
 
 
 LOW_CONFIDENCE_THRESHOLD = 0.6
+REVIEWED_STATUSES = frozenset({"approved", "edited"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,20 +26,29 @@ class BpmAnalysisSummary:
     analyzed_tracks: int
     tracks_needing_review: int
     failed_tracks: int
+    skipped_reviewed_tracks: int = 0
 
 
 def analyze_bpm_for_folder(
     folder: str | Path,
     database_path: str | Path = "djcuecraft.sqlite3",
+    *,
+    force: bool = False,
 ) -> BpmAnalysisSummary:
     audio_files = scan_audio_files(folder)
     analyzed_tracks = 0
     tracks_needing_review = 0
     failed_tracks = 0
+    skipped_reviewed_tracks = 0
 
     with database.connect(database_path) as connection:
         for path in audio_files:
             track = _ensure_track(connection, path)
+
+            if not force and track.review_status.value in REVIEWED_STATUSES:
+                skipped_reviewed_tracks += 1
+                continue
+
             result = detect_bpm(path)
             if result.bpm is None:
                 failed_tracks += 1
@@ -66,6 +76,7 @@ def analyze_bpm_for_folder(
         analyzed_tracks=analyzed_tracks,
         tracks_needing_review=tracks_needing_review,
         failed_tracks=failed_tracks,
+        skipped_reviewed_tracks=skipped_reviewed_tracks,
     )
 
 

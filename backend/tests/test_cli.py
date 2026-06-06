@@ -118,6 +118,63 @@ def test_analyze_beats_command_passes_custom_cue_template(monkeypatch) -> None:
     }
 
 
+def test_export_csv_refuses_to_overwrite_existing_file_without_flag(
+    tmp_path, monkeypatch
+) -> None:
+    existing = tmp_path / "approved.csv"
+    existing.write_text("old content", encoding="utf-8")
+
+    called = []
+    monkeypatch.setattr(cli, "export_tracks_to_csv", lambda db, out: called.append(out) or 0)
+
+    exit_code = cli.main(
+        ["export-csv", "--database", "tracks.sqlite3", "--output", str(existing)]
+    )
+
+    assert exit_code == 1
+    assert called == [], "exporter must not be called when output exists and --overwrite not set"
+    assert existing.read_text(encoding="utf-8") == "old content"
+
+
+def test_export_csv_overwrites_existing_file_with_flag(
+    tmp_path, monkeypatch
+) -> None:
+    existing = tmp_path / "approved.csv"
+    existing.write_text("old content", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "export_tracks_to_csv", lambda db, out: 3)
+
+    exit_code = cli.main(
+        [
+            "export-csv",
+            "--database", "tracks.sqlite3",
+            "--output", str(existing),
+            "--overwrite",
+        ]
+    )
+
+    assert exit_code == 0
+
+
+def test_export_json_refuses_to_overwrite_existing_file_without_flag(
+    tmp_path, monkeypatch
+) -> None:
+    existing = tmp_path / "approved.json"
+    existing.write_text("{}", encoding="utf-8")
+
+    called = []
+    monkeypatch.setattr(
+        cli, "export_approved_tracks_to_json", lambda db, out: called.append(out) or 0
+    )
+
+    exit_code = cli.main(
+        ["export-json", "--database", "tracks.sqlite3", "--output", str(existing)]
+    )
+
+    assert exit_code == 1
+    assert called == []
+
+
 def test_export_json_command_uses_safe_metadata_export(monkeypatch) -> None:
     captured = {}
 

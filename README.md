@@ -4,6 +4,15 @@ DJ CueCraft is a local-first DJ library preparation tool. The Phase 1 MVP scans 
 
 This is not a DJ performance app. It does not play tracks, edit Engine DJ or Rekordbox databases, write cue points, rewrite audio files, sync to the cloud, or use external metadata APIs.
 
+## Safety First
+
+**Always work on a copy of your music library, not the originals.**
+
+- DJ CueCraft never modifies your audio files in this version. All changes are proposals stored in a local SQLite database.
+- BPM detection and beat/cue analysis are experimental. Results are often inaccurate for Indian, Latin, live, and variable-BPM tracks. Treat every BPM and cue proposal as a draft until you review it.
+- Exports are sidecar review files only. They do not write back to audio files, ID3 tags, Engine DJ, Rekordbox, or any other DJ software.
+- If you are testing for the first time: copy a small folder of tracks to a safe location and run the scan there first.
+
 ## MVP Scope
 
 - Scan local folders for `.mp3`, `.flac`, `.m4a`, and `.wav` files.
@@ -19,6 +28,8 @@ This is not a DJ performance app. It does not play tracks, edit Engine DJ or Rek
 
 ## Setup
 
+**Windows (PowerShell)**
+
 ```powershell
 cd backend
 python -m venv .venv
@@ -26,11 +37,20 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
+**Mac / Linux**
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+```
+
 Setup also installs the `dj-library-prep` console command. The examples below use `python -m dj_library_prep.cli` so the active Python environment is explicit.
 
 For experimental BPM detection, install the optional audio dependencies:
 
-```powershell
+```bash
 python -m pip install -e ".[audio,dev]"
 ```
 
