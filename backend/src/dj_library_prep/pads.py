@@ -4,13 +4,18 @@ Pads are a fixed grid of 8 slots per track. They are stored in the local
 SQLite ``pads`` table only. Like every other DJ CueCraft output, pads are
 proposals for review and are never written to audio files or DJ software.
 
-Auto-fill places pads at phrase boundaries derived from stored beat
-timestamps. It preserves any pad the user has touched (``source = 'manual'``)
-and only writes empty slots or slots that are still ``source = 'auto'``.
+Auto-fill supports two modes:
+- Phrase-based (default): pads at beats 0, phrase_length, 2*phrase_length, …
+- Preset-based: uses a named CUE_PRESETS entry; beat-indexed cues are placed
+  by beat count from the start, time-fraction cues are resolved to the nearest
+  beat using the caller-supplied total_duration_seconds.
+
+Manual pads (source='manual') are always preserved in both modes.
 """
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -43,12 +48,7 @@ def set_pad(
     beat_index: int | None = None,
     database_path: str | Path = "djcuecraft.sqlite3",
 ) -> dict[str, Any]:
-    """Create or update a single pad as a manual (user-owned) pad.
-
-    Used for both renaming (label only) and re-capturing a position
-    (timestamp_seconds). Existing values are preserved when an argument is
-    omitted so a rename does not wipe the captured time, and vice versa.
-    """
+    """Create or update a single pad as a manual (user-owned) pad."""
     _validate_pad_index(pad_index)
 
     with database.connect(database_path) as connection:
@@ -69,7 +69,6 @@ def set_pad(
         if beat_index is not None:
             new_beat: int | None = int(beat_index)
         elif timestamp_seconds is not None:
-            # Re-capture from playhead: the beat index no longer applies.
             new_beat = None
         else:
             new_beat = existing["beat_index"] if existing else None
@@ -109,13 +108,20 @@ def autofill_pads(
     track_id: int,
     *,
     phrase_length: int = DEFAULT_PHRASE_LENGTH,
+    preset_name: str | None = None,
+    total_duration_seconds: float | None = None,
     database_path: str | Path = "djcuecraft.sqlite3",
 ) -> list[dict[str, Any]]:
-    """Place phrase-based pads from stored beat timestamps.
+    """Place pads from stored beat timestamps.
 
-    Pads land on beats 0, phrase_length, 2*phrase_length, ... Manual pads are
-    preserved; only empty or still-auto slots are (re)written. Raises
-    ValueError when the track has no stored beats yet.
+    When ``preset_name`` is given the named CUE_PRESETS entry drives the
+    labels and positions; time-fraction cues in the preset resolve to the
+    nearest beat using ``total_duration_seconds`` (silently skipped when it
+    is not supplied). When ``preset_name`` is None the classic phrase-based
+    mode is used (pads at beats 0, phrase_length, 2*phrase_length, …).
+
+    Manual pads are preserved in both modes. Raises ValueError when the
+    track has no stored beats yet.
     """
     if phrase_length <= 0:
         raise ValueError("Phrase length must be a positive number of beats.")
@@ -128,26 +134,88 @@ def autofill_pads(
             )
 
         existing = {row["pad_index"]: row for row in database.list_pads(connection, track_id)}
-        for pad_index in range(PAD_COUNT):
-            current = existing.get(pad_index)
-            if current is not None and current["source"] == SOURCE_MANUAL:
-                continue
-
-            beat_index = pad_index * phrase_length
-            if beat_index >= len(beats):
-                continue
-
-            database.upsert_pad(
-                connection,
-                track_id=track_id,
-                pad_index=pad_index,
-                label=_phrase_label(pad_index),
-                timestamp_seconds=beats[beat_index],
-                beat_index=beat_index,
-                source=SOURCE_AUTO,
+        if preset_name is not None:
+            _autofill_from_preset(
+                connection, track_id, preset_name, beats, total_duration_seconds, existing
             )
+        else:
+            _autofill_from_phrase(connection, track_id, phrase_length, beats, existing)
 
     return list_pads_for_track(track_id, database_path)
+
+
+def _autofill_from_phrase(
+    connection: sqlite3.Connection,
+    track_id: int,
+    phrase_length: int,
+    beats: list[float],
+    existing: dict[int, Any],
+) -> None:
+    for pad_index in range(PAD_COUNT):
+        current = existing.get(pad_index)
+        if current is not None and current["source"] == SOURCE_MANUAL:
+            continue
+
+        beat_index = pad_index * phrase_length
+        if beat_index >= len(beats):
+            continue
+
+        database.upsert_pad(
+            connection,
+            track_id=track_id,
+            pad_index=pad_index,
+            label=_phrase_label(pad_index),
+            timestamp_seconds=beats[beat_index],
+            beat_index=beat_index,
+            source=SOURCE_AUTO,
+        )
+
+
+def _autofill_from_preset(
+    connection: sqlite3.Connection,
+    track_id: int,
+    preset_name: str,
+    beats: list[float],
+    total_duration_seconds: float | None,
+    existing: dict[int, Any],
+) -> None:
+    from dj_library_prep.beat_analyzer import CUE_PRESETS, _nearest_beat_index
+
+    try:
+        preset = CUE_PRESETS[preset_name]
+    except KeyError:
+        available = ", ".join(sorted(CUE_PRESETS))
+        raise ValueError(f"Unknown preset: {preset_name}. Available: {available}")
+
+    for pad_index, cue in enumerate(preset):
+        if pad_index >= PAD_COUNT:
+            break
+
+        current = existing.get(pad_index)
+        if current is not None and current["source"] == SOURCE_MANUAL:
+            continue
+
+        if cue.time_fraction is not None:
+            if not total_duration_seconds or not beats:
+                continue
+            target_time = cue.time_fraction * total_duration_seconds
+            beat_index = _nearest_beat_index(beats, target_time)
+            timestamp = beats[beat_index]
+        else:
+            beat_index = cue.beat_index  # type: ignore[assignment]
+            if beat_index >= len(beats):
+                continue
+            timestamp = beats[beat_index]
+
+        database.upsert_pad(
+            connection,
+            track_id=track_id,
+            pad_index=pad_index,
+            label=cue.cue_label,
+            timestamp_seconds=timestamp,
+            beat_index=beat_index,
+            source=SOURCE_AUTO,
+        )
 
 
 def _phrase_label(pad_index: int) -> str:

@@ -156,3 +156,97 @@ def test_clear_all_pads_empties_every_slot(tmp_path) -> None:
     assert len(refreshed) == 8
     assert all(pad["timestamp_seconds"] is None for pad in refreshed)
     assert all(pad["source"] is None for pad in refreshed)
+
+
+def test_autofill_with_preset_places_beat_indexed_cues(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    # 300 beats at 0.5s each
+    track_id = _track_with_beats(db_path, beat_count=300)
+
+    pad_slots = pads.autofill_pads(
+        track_id,
+        preset_name="starter",
+        database_path=db_path,
+    )
+
+    # starter preset: Intro(0), 8 Beats In(8), 16 Beats In(16), 32 Beats In(32), 64 Beats In(64)
+    assert pad_slots[0]["label"] == "Intro"
+    assert pad_slots[0]["timestamp_seconds"] == 0.0
+    assert pad_slots[1]["label"] == "8 Beats In"
+    assert pad_slots[1]["timestamp_seconds"] == 4.0  # beat 8 * 0.5s
+    assert pad_slots[2]["label"] == "16 Beats In"
+    assert pad_slots[3]["label"] == "32 Beats In"
+    assert pad_slots[4]["label"] == "64 Beats In"
+    # slots 5-7 are empty (starter has only 5 cues)
+    assert pad_slots[5]["timestamp_seconds"] is None
+
+
+def test_autofill_with_preset_resolves_time_fraction_cues(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    # 300 beats at 0.5s each → last beat at 149.5s
+    track_id = _track_with_beats(db_path, beat_count=300)
+    total_duration = 200.0
+
+    pad_slots = pads.autofill_pads(
+        track_id,
+        preset_name="performance",
+        total_duration_seconds=total_duration,
+        database_path=db_path,
+    )
+
+    # performance preset has 8 cues; all 300 beats cover the first 150s
+    # beat-indexed cues (0,8,16,32,64) all resolve; time-fraction cues
+    # (Mid 0.55, Last Chorus 0.75, Outro 0.90) resolve to nearest beat
+    assert pad_slots[0]["label"] == "Intro"
+    assert pad_slots[0]["timestamp_seconds"] == 0.0
+
+    # Mid at 55% of 200s = 110s → nearest beat at 110.0s (beat index 220)
+    mid = next(p for p in pad_slots if p["label"] == "Mid")
+    assert mid["timestamp_seconds"] == pytest.approx(110.0, abs=0.6)
+
+    # Outro at 90% of 200s = 180s; last beat is 149.5s → snaps to beat end
+    outro = next(p for p in pad_slots if p["label"] == "Outro")
+    assert outro["timestamp_seconds"] == pytest.approx(149.5, abs=0.6)
+
+    assert all(p["source"] == "auto" for p in pad_slots if p["timestamp_seconds"] is not None)
+
+
+def test_autofill_with_preset_skips_time_fraction_without_duration(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path, beat_count=300)
+
+    pad_slots = pads.autofill_pads(
+        track_id,
+        preset_name="performance",
+        # no total_duration_seconds → time-fraction cues skipped
+        database_path=db_path,
+    )
+
+    labels = [p["label"] for p in pad_slots if p["timestamp_seconds"] is not None]
+    # Only the 5 beat-indexed cues should be placed; 3 time-fraction cues skipped
+    assert "Breakdown" not in labels
+    assert "Build" not in labels
+    assert "Outro" not in labels
+    assert "Intro" in labels
+
+
+def test_autofill_with_unknown_preset_raises(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path)
+
+    with pytest.raises(ValueError, match="Unknown preset"):
+        pads.autofill_pads(track_id, preset_name="nonexistent", database_path=db_path)
+
+
+def test_autofill_preset_preserves_manual_pads(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path, beat_count=300)
+    pads.autofill_pads(track_id, preset_name="starter", database_path=db_path)
+    pads.set_pad(track_id, 0, label="Custom Intro", timestamp_seconds=1.0, database_path=db_path)
+
+    refreshed = pads.autofill_pads(track_id, preset_name="starter", database_path=db_path)
+
+    assert refreshed[0]["label"] == "Custom Intro"
+    assert refreshed[0]["source"] == "manual"
+    assert refreshed[1]["label"] == "8 Beats In"
+    assert refreshed[1]["source"] == "auto"
