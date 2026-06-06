@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DJ CueCraft Review</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
   <body>
     <header class="topbar">
@@ -66,7 +66,12 @@
       <canvas id="waveform" class="waveform" height="120"></canvas>
       <div class="padBar">
         <button id="analyzeBeatsButton" type="button" disabled>Analyze beats</button>
-        <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill pads (phrase)</button>
+        <label class="padPresetLabel">Preset
+          <select id="padPreset" disabled>
+            <option value="">phrase</option>
+          </select>
+        </label>
+        <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill pads</button>
         <button id="clearAllPadsButton" class="secondaryButton" type="button" disabled>Clear all</button>
         <span id="padState" class="padState"></span>
       </div>
@@ -161,6 +166,6 @@
       </tr>
     </template>
 
-    <script src="./app.js?v=4"></script>
+    <script src="./app.js?v=5"></script>
   </body>
 </html>

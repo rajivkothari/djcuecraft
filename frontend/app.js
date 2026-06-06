@@ -15,6 +15,7 @@ const waveformCanvas = document.querySelector("#waveform");
 const analyzeBeatsButton = document.querySelector("#analyzeBeatsButton");
 const autoFillPadsButton = document.querySelector("#autoFillPadsButton");
 const clearAllPadsButton = document.querySelector("#clearAllPadsButton");
+const padPresetSelect = document.querySelector("#padPreset");
 const padState = document.querySelector("#padState");
 const padGrid = document.querySelector("#padGrid");
 const padTemplate = document.querySelector("#padTemplate");
@@ -31,11 +32,32 @@ refreshButton.addEventListener("click", loadTracks);
 statusFilter.addEventListener("change", loadTracks);
 
 loadTracks();
+loadCuePresets();
 
 /* ---------------------------------------------------------------------------
  * Track list: each row is a collapsed summary. Clicking it expands an inline
  * metadata editor and loads the track into the cue editor below.
  * ------------------------------------------------------------------------ */
+
+async function loadCuePresets() {
+  try {
+    const response = await fetch("/api/cue-presets");
+    if (!response.ok) return;
+    const payload = await response.json();
+    const presets = payload.presets || [];
+    const defaultPreset = payload.default_preset || "";
+    padPresetSelect.innerHTML = '<option value="">phrase</option>';
+    for (const name of presets) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      if (name === defaultPreset) opt.selected = true;
+      padPresetSelect.appendChild(opt);
+    }
+  } catch (_) {
+    // non-fatal: preset selector stays with "phrase" fallback
+  }
+}
 
 async function loadTracks() {
   rowsEl.innerHTML = "";
@@ -335,6 +357,7 @@ async function selectTrackForEditor(track, rowEl) {
   analyzeBeatsButton.disabled = false;
   autoFillPadsButton.disabled = false;
   clearAllPadsButton.disabled = false;
+  padPresetSelect.disabled = false;
 
   await loadPads(track.id);
   await loadAudio(track);
@@ -769,10 +792,14 @@ async function autoFillPads() {
   autoFillPadsButton.disabled = true;
   padState.textContent = "Auto-filling…";
   try {
+    const preset = padPresetSelect.value;
+    const body = {};
+    if (preset) body.preset = preset;
+    if (duration > 0) body.total_duration_seconds = duration;
     const response = await fetch(`/api/tracks/${selectedTrack.id}/pads/auto-fill`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       padState.textContent = await responseErrorMessage(response, "Auto-fill failed");
@@ -782,7 +809,8 @@ async function autoFillPads() {
     padsData = payload.pads || [];
     renderPads();
     drawWaveform();
-    padState.textContent = "Pads filled from phrasing";
+    const label = preset || "phrase";
+    padState.textContent = `Pads filled (${label})`;
   } catch (error) {
     padState.textContent = "Auto-fill failed";
   } finally {
