@@ -10,6 +10,7 @@ const cuePresetSelect = document.querySelector("#cuePreset");
 const cueTemplateRowsInput = document.querySelector("#cueTemplateRows");
 const analyzeCueButton = document.querySelector("#analyzeCueButton");
 const refreshCueButton = document.querySelector("#refreshCueButton");
+const browseFolderButton = document.querySelector("#browseFolderButton");
 
 const editableFields = [
   "normalized_decade",
@@ -23,6 +24,7 @@ refreshButton.addEventListener("click", loadTracks);
 statusFilter.addEventListener("change", loadTracks);
 analyzeCueButton.addEventListener("click", analyzeCues);
 refreshCueButton.addEventListener("click", loadCuePoints);
+browseFolderButton.addEventListener("click", browseForFolder);
 
 loadTracks();
 loadCuePoints();
@@ -98,6 +100,24 @@ function renderTrackRow(track) {
     loadHistory(row);
   });
   return row;
+}
+
+async function browseForFolder() {
+  browseFolderButton.disabled = true;
+  browseFolderButton.textContent = "Opening…";
+  try {
+    const response = await fetch("/api/browse-folder");
+    if (!response.ok) throw new Error();
+    const payload = await response.json();
+    if (payload.folder) {
+      cueFolderPathInput.value = payload.folder;
+    }
+  } catch {
+    // dialog cancelled or unavailable — leave input unchanged
+  } finally {
+    browseFolderButton.disabled = false;
+    browseFolderButton.textContent = "Browse…";
+  }
 }
 
 async function analyzeCues() {

@@ -45,7 +45,10 @@
         <div class="cueControls">
           <label class="wideField">
             Music folder
-            <input id="cueFolderPath" autocomplete="off" />
+            <div class="folderInputRow">
+              <input id="cueFolderPath" autocomplete="off" placeholder="Paste a path or click Browse" />
+              <button id="browseFolderButton" class="secondaryButton" type="button">Browse…</button>
+            </div>
           </label>
           <label>
             Preset

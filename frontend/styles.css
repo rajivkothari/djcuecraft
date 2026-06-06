@@ -319,6 +319,21 @@ dd {
   padding: 6px 0;
 }
 
+.folderInputRow {
+  display: flex;
+  gap: 6px;
+}
+
+.folderInputRow input {
+  flex: 1;
+  min-width: 0;
+}
+
+.folderInputRow button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .cueEditBtn {
   font-size: 14px;
   min-height: 26px;

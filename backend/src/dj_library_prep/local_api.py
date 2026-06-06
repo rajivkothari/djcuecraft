@@ -3,6 +3,8 @@ from __future__ import annotations
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import subprocess
+import sys
 from urllib.parse import parse_qs, urlparse
 
 from dj_library_prep import database
@@ -49,6 +51,9 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                 status = query.get("status", [None])[0]
                 tracks = list_review_tracks(database_path, review_status=status)
                 self._write_json({"tracks": tracks})
+                return
+            if parsed.path == "/api/browse-folder":
+                self._write_json({"folder": _browse_for_folder()})
                 return
             if parsed.path == "/api/cue-points":
                 self._write_json({"cue_points": _list_cue_points(database_path)})
@@ -175,3 +180,27 @@ def _cue_template_from_payload(payload: dict) -> tuple[CueTemplate, ...]:
 def _list_cue_points(database_path: Path) -> list[dict]:
     with database.connect(database_path) as connection:
         return [dict(row) for row in database.list_cue_points(connection)]
+
+
+def _browse_for_folder() -> str | None:
+    script = (
+        "import tkinter, tkinter.filedialog;"
+        "root = tkinter.Tk();"
+        "root.withdraw();"
+        "root.lift();"
+        "root.attributes('-topmost', True);"
+        "path = tkinter.filedialog.askdirectory(title='Select music folder');"
+        "root.destroy();"
+        "print(path, end='')"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        folder = result.stdout.strip()
+        return folder if folder else None
+    except Exception:
+        return None
