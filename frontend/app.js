@@ -738,7 +738,7 @@ function startMetronome() {
   const bpm = Number(selectedTrack.bpm);
   if (!bpm || bpm <= 0 || Number.isNaN(bpm)) return;
   const ctx = getAudioContext();
-  if (ctx.state === "suspended") ctx.resume();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
   resetMetronome();
   metronomeTimer = setInterval(scheduleMetronome, 20);
 }
@@ -768,22 +768,33 @@ function scheduleMetronome() {
   }
 }
 
+let clickBuffer = null;
+
+function buildClickBuffer(ctx) {
+  const sr = ctx.sampleRate;
+  const len = Math.ceil(sr * 0.05); // 50ms
+  const buf = ctx.createBuffer(1, len, sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    const t = i / sr;
+    data[i] = Math.sin(2 * Math.PI * 1000 * t) * Math.exp(-t / 0.008);
+  }
+  return buf;
+}
+
 function clickAt(ctx, when) {
   if (!metronomeGainNode) {
     metronomeGainNode = ctx.createGain();
     metronomeGainNode.gain.value = metronomeVolume.value / 100;
     metronomeGainNode.connect(ctx.destination);
   }
-  const osc = ctx.createOscillator();
-  const clickGain = ctx.createGain();
-  osc.type = "square";
-  osc.frequency.value = 1000;
-  clickGain.gain.setValueAtTime(0.6, when);
-  clickGain.gain.exponentialRampToValueAtTime(0.001, when + 0.08);
-  osc.connect(clickGain);
-  clickGain.connect(metronomeGainNode);
-  osc.start(when);
-  osc.stop(when + 0.09);
+  if (!clickBuffer || clickBuffer.sampleRate !== ctx.sampleRate) {
+    clickBuffer = buildClickBuffer(ctx);
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = clickBuffer;
+  source.connect(metronomeGainNode);
+  source.start(when);
 }
 
 /* ---- Frequency Analysis (IIR filter bands via Web Worker) ---- */
