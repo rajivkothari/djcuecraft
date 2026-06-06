@@ -273,6 +273,126 @@ def test_patch_cue_point_rejects_empty_label(tmp_path) -> None:
     assert unchanged["cue_label"] == "Intro"
 
 
+def test_pads_endpoints_autofill_rename_and_recapture(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            beat_timestamps=[round(i * 0.5, 3) for i in range(300)],
+            beat_confidence=0.8,
+        )
+        connection.commit()
+
+    track_id = saved_track["id"]
+    with _running_api(db_path, frontend_dir) as server:
+        empty_status, empty_payload = _request(
+            server, "GET", f"/api/tracks/{track_id}/pads"
+        )
+        fill_status, fill_payload = _request(
+            server, "POST", f"/api/tracks/{track_id}/pads/auto-fill", {}
+        )
+        rename_status, rename_payload = _request(
+            server, "PUT", f"/api/tracks/{track_id}/pads/1", {"label": "Drop"}
+        )
+        recapture_status, recapture_payload = _request(
+            server,
+            "PUT",
+            f"/api/tracks/{track_id}/pads/2",
+            {"timestamp_seconds": 41.5},
+        )
+
+    assert empty_status == 200
+    assert len(empty_payload["pads"]) == 8
+    assert all(pad["timestamp_seconds"] is None for pad in empty_payload["pads"])
+
+    assert fill_status == 200
+    assert fill_payload["pads"][0]["timestamp_seconds"] == 0.0
+    assert fill_payload["pads"][1]["timestamp_seconds"] == 16.0
+
+    assert rename_status == 200
+    assert rename_payload["pad"]["label"] == "Drop"
+    assert rename_payload["pad"]["timestamp_seconds"] == 16.0
+
+    assert recapture_status == 200
+    assert recapture_payload["pad"]["timestamp_seconds"] == 41.5
+    assert recapture_payload["pad"]["source"] == "manual"
+
+
+def test_pads_autofill_without_beats_returns_400(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(
+            server, "POST", f"/api/tracks/{saved_track['id']}/pads/auto-fill", {}
+        )
+
+    assert status == 400
+    assert "beats" in payload["error"].lower()
+
+
+def test_audio_endpoint_serves_file_bytes(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    audio_path = tmp_path / "song.mp3"
+    audio_bytes = b"ID3 fake audio bytes"
+    audio_path.write_bytes(audio_bytes)
+
+    from urllib.parse import quote
+
+    with _running_api(db_path, frontend_dir) as server:
+        connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+        connection.request("GET", f"/api/audio?path={quote(str(audio_path))}")
+        response = connection.getresponse()
+        body = response.read()
+        content_type = response.getheader("Content-Type")
+        connection.close()
+
+    assert response.status == 200
+    assert body == audio_bytes
+    assert content_type == "audio/mpeg"
+
+
+def test_audio_endpoint_rejects_missing_file(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    from urllib.parse import quote
+
+    with _running_api(db_path, frontend_dir) as server:
+        missing = tmp_path / "nope.mp3"
+        status, payload = _request(
+            server, "GET", f"/api/audio?path={quote(str(missing))}"
+        )
+
+    assert status == 404
+
+
 @contextmanager
 def _running_api(database_path, frontend_dir):
     handler = _handler_factory(frontend_dir, database_path)

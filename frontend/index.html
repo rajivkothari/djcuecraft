@@ -99,6 +99,44 @@
       </div>
     </main>
 
+    <section id="cueEditor" class="cueEditor">
+      <div class="editorBar">
+        <div class="editorTrackInfo">
+          <strong id="editorTrackName">Select a track to load the cue editor</strong>
+          <span id="editorTrackMeta"></span>
+        </div>
+        <div class="editorTransport">
+          <button id="playButton" type="button" disabled>▶ Play</button>
+          <button id="stopButton" class="secondaryButton" type="button" disabled>■ Stop</button>
+          <span id="editorTime" class="editorTime">0:00 / 0:00</span>
+          <label class="metronomeToggle">
+            <input type="checkbox" id="metronomeToggle" /> Metronome
+          </label>
+          <span id="editorBpm" class="editorBpm"></span>
+        </div>
+      </div>
+      <canvas id="waveform" class="waveform" height="120"></canvas>
+      <div class="padBar">
+        <button id="autoFillPadsButton" type="button" disabled>Auto-fill pads (phrase)</button>
+        <span id="padState" class="padState"></span>
+      </div>
+      <div id="padGrid" class="padGrid"></div>
+    </section>
+
+    <template id="padTemplate">
+      <div class="pad">
+        <div class="padTop">
+          <span class="padLabel" data-field="label"></span>
+          <button class="padRename" type="button" title="Rename pad" aria-label="Rename pad">&#9998;</button>
+        </div>
+        <div class="padTime" data-field="time">—</div>
+        <div class="padButtons">
+          <button class="padJump" type="button">Jump</button>
+          <button class="padSet secondaryButton" type="button" title="Set to current playhead">Set</button>
+        </div>
+      </div>
+    </template>
+
     <template id="trackRowTemplate">
       <tr>
         <td class="trackCell">

@@ -265,6 +265,43 @@ def test_initialize_creates_track_lookup_indexes(tmp_path) -> None:
     assert "idx_correction_history_track_id" in indexes
 
 
+def test_initialize_creates_pads_table(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    with database.connect(db_path) as connection:
+        tables = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        indexes = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+
+    assert "pads" in tables
+    assert "idx_pads_track_id" in indexes
+
+
+def test_migration_adds_pads_table_to_existing_database(tmp_path) -> None:
+    db_path = tmp_path / "pre_pads.sqlite3"
+    _create_version_2_database(db_path)
+
+    with database.connect(db_path) as connection:
+        tables = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        schema_version = database.get_schema_version(connection)
+
+    assert "pads" in tables
+    assert schema_version == database.CURRENT_SCHEMA_VERSION
+
+
 def test_migration_adds_indexes_to_existing_database(tmp_path) -> None:
     db_path = tmp_path / "pre_index.sqlite3"
     _create_version_2_database(db_path)

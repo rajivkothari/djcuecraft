@@ -109,6 +109,41 @@ The cue table in the review UI now has an Actions column with a pencil (✎) edi
 
 ---
 
+## Cue Editor: Waveform + Play + Metronome + 8 Pads (Added After Cue Rename)
+
+**Files changed:** `database.py`, `pads.py` (new), `local_api.py`, `frontend/index.html`, `frontend/app.js`, `frontend/styles.css`
+**Tests added:** `test_pads.py` (new, 11 tests), `test_local_api.py` (4 new), `test_database.py` (2 new)
+
+A persistent bottom panel cue editor. Click any track's name cell to load it into the editor.
+
+**Audio playback & waveform (client-side, no new backend audio deps):**
+- `GET /api/audio?path=...` serves the local audio file **read-only** (validates extension + existence, sets content-type). It never modifies the file.
+- The browser fetches the file once, decodes it with the Web Audio API (`decodeAudioData`), and uses the same `AudioBuffer` for both the waveform drawing and playback (`AudioBufferSourceNode`). No HTTP range/seeking complexity, and `librosa` is NOT required for the waveform.
+- Playhead, click-to-seek, play/pause/stop are all driven from `audioContext.currentTime`.
+
+**Metronome:** Web Audio oscillator clicks scheduled at the track's stored `bpm` (from `tracks.bpm`), phase-anchored to the first pad position. Toggle in the transport bar. Only ticks while playing. If the track has no BPM, it stays silent.
+
+**8 pads per track (new `pads` table, schema v4):**
+- `pads` columns: `id, track_id, pad_index (0-7), label, timestamp_seconds, beat_index, source ('auto'|'manual'), created_at, updated_at`, `UNIQUE(track_id, pad_index)`. Index `idx_pads_track_id`.
+- Logic lives in `pads.py` (service layer, not in `database.py`): `list_pads_for_track`, `set_pad`, `clear_pad`, `autofill_pads`.
+- **Auto-fill** (`POST /api/tracks/{id}/pads/auto-fill`) places phrase pads at beats 0, 32, 64, … read from the track's stored `beat_timestamps`. Requires that beats were already detected (run folder Analyze first); returns 400 with a clear message if not. Phrase length defaults to 32 beats, overridable via `{"phrase_length": N}`.
+- **Rename + re-capture** (`PUT /api/tracks/{id}/pads/{idx}`): `{"label": "..."}` renames, `{"timestamp_seconds": N}` re-captures position to the current playhead. Either action marks the pad `source='manual'`. Renaming preserves the captured position and vice versa.
+- **Preserve invariant:** `autofill_pads` never overwrites a `source='manual'` pad. This mirrors the project-wide "don't clobber reviewed work" rule.
+- `GET /api/tracks/{id}/pads` always returns 8 slots (empty slots filled with blank placeholders so the UI grid is stable).
+- `DELETE /api/tracks/{id}/pads/{idx}` clears a slot.
+
+**New HTTP verbs:** `local_api.py` now implements `do_PUT` and `do_DELETE` in addition to GET/POST/PATCH.
+
+**Frontend structure:** `#cueEditor` is `position: fixed` at the bottom (`main` has `padding-bottom` to compensate). Pads render from a `<template id="padTemplate">`. The waveform is a `<canvas>` redrawn each animation frame while playing.
+
+**Notes / future hooks for Codex:**
+- Pads and the existing `cue_points` table are **separate systems**. `cue_points` is the flat per-folder auto-cue list (and the rename feature); `pads` is the per-track 8-slot editor. They can be unified later, but were kept separate to avoid the `cue_points` `UNIQUE(track_id, cue_label)` constraint blocking two pads with the same name.
+- The metronome anchor is the first pad with a timestamp; if you later store a true downbeat offset, use it here.
+- `decodeAudioData` covers mp3/wav/m4a everywhere and FLAC in modern Chromium/Firefox. If a user reports a FLAC that won't load, that's a browser codec gap, not a backend bug.
+- The pads were lost-feature parity work — when Codex's original waveform/pad code was overwritten in the merge, this is the committed replacement.
+
+---
+
 ## Remaining Backlog (Not Yet Implemented)
 
 ### P1 — Should Fix Before Broader Testing

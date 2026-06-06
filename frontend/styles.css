@@ -363,6 +363,190 @@ dd {
   width: 100%;
 }
 
+.selectable {
+  cursor: pointer;
+}
+
+.trackCell.selectable:hover {
+  background: #eef6f4;
+}
+
+.selectedRow {
+  background: #e6f2f0;
+}
+
+.selectedRow .trackCell.selectable {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Cue editor — persistent bottom panel */
+main {
+  padding-bottom: 52vh;
+}
+
+.cueEditor {
+  background: var(--panel);
+  border-top: 2px solid var(--accent);
+  bottom: 0;
+  box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.12);
+  display: grid;
+  gap: 10px;
+  left: 0;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 12px 16px;
+  position: fixed;
+  right: 0;
+  z-index: 20;
+}
+
+.editorBar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.editorTrackInfo {
+  display: grid;
+  gap: 2px;
+}
+
+.editorTrackInfo strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.editorTrackInfo span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.editorTransport {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.editorTime {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+}
+
+.editorBpm {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.metronomeToggle {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+
+.metronomeToggle input {
+  min-height: auto;
+}
+
+.waveform {
+  background: #eef2f5;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  display: block;
+  height: 120px;
+  width: 100%;
+}
+
+.padBar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.padState {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.padGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.pad {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.pad.padManual {
+  border-color: var(--accent);
+}
+
+.pad.padEmpty {
+  opacity: 0.7;
+}
+
+.padTop {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.padLabel {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.padLabelInput {
+  flex: 1;
+  min-height: 26px;
+  width: 100%;
+}
+
+.padRename {
+  background: #fff;
+  border-color: var(--line);
+  color: var(--text);
+  flex-shrink: 0;
+  font-size: 13px;
+  min-height: 24px;
+  padding: 0 6px;
+}
+
+.padTime {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.padButtons {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.padButtons button {
+  min-height: 28px;
+  padding: 0 6px;
+}
+
+.padButtons .secondaryButton {
+  margin-top: 0;
+}
+
 @media (max-width: 760px) {
   .topbar {
     align-items: stretch;
@@ -385,5 +569,6 @@ dd {
 
   main {
     padding: 8px;
+    padding-bottom: 60vh;
   }
 }

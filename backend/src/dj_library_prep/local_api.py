@@ -21,9 +21,18 @@ from dj_library_prep.review_service import (
     list_review_tracks,
     update_review_track,
 )
+from dj_library_prep import pads as pad_service
+from dj_library_prep.models import SUPPORTED_EXTENSIONS
 
 
 DEFAULT_FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
+
+AUDIO_CONTENT_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+}
 
 
 def serve_ui(
@@ -55,6 +64,10 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
             if parsed.path == "/api/browse-folder":
                 self._write_json({"folder": _browse_for_folder()})
                 return
+            if parsed.path == "/api/audio":
+                query = parse_qs(parsed.query)
+                self._serve_audio(query.get("path", [""])[0])
+                return
             if parsed.path == "/api/cue-points":
                 self._write_json({"cue_points": _list_cue_points(database_path)})
                 return
@@ -75,6 +88,15 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                     self._write_json({"error": str(exc)}, status=400)
                     return
                 self._write_json({"history": history})
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "tracks"] and parts[3] == "pads":
+                try:
+                    track_id = int(parts[2])
+                    pads = pad_service.list_pads_for_track(track_id, database_path)
+                except ValueError as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"pads": pads})
                 return
             super().do_GET()
 
@@ -112,6 +134,68 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                 )
                 return
 
+            parts = parsed.path.strip("/").split("/")
+            if (
+                len(parts) == 5
+                and parts[:2] == ["api", "tracks"]
+                and parts[3] == "pads"
+                and parts[4] == "auto-fill"
+            ):
+                try:
+                    track_id = int(parts[2])
+                    payload = self._read_json()
+                    phrase_length = int(
+                        payload.get("phrase_length", pad_service.DEFAULT_PHRASE_LENGTH)
+                    )
+                    pads = pad_service.autofill_pads(
+                        track_id,
+                        phrase_length=phrase_length,
+                        database_path=database_path,
+                    )
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"pads": pads})
+                return
+
+            self._write_json({"error": "Not found"}, status=404)
+
+        def do_PUT(self) -> None:
+            parsed = urlparse(self.path)
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) == 5 and parts[:2] == ["api", "tracks"] and parts[3] == "pads":
+                try:
+                    track_id = int(parts[2])
+                    pad_index = int(parts[4])
+                    payload = self._read_json()
+                    pad = pad_service.set_pad(
+                        track_id,
+                        pad_index,
+                        label=payload.get("label"),
+                        timestamp_seconds=payload.get("timestamp_seconds"),
+                        beat_index=payload.get("beat_index"),
+                        database_path=database_path,
+                    )
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"pad": pad})
+                return
+            self._write_json({"error": "Not found"}, status=404)
+
+        def do_DELETE(self) -> None:
+            parsed = urlparse(self.path)
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) == 5 and parts[:2] == ["api", "tracks"] and parts[3] == "pads":
+                try:
+                    track_id = int(parts[2])
+                    pad_index = int(parts[4])
+                    pad_service.clear_pad(track_id, pad_index, database_path)
+                except ValueError as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"cleared": True})
+                return
             self._write_json({"error": "Not found"}, status=404)
 
         def do_PATCH(self) -> None:
@@ -153,6 +237,34 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
             length = int(self.headers.get("Content-Length", "0"))
             raw_body = self.rfile.read(length).decode("utf-8")
             return json.loads(raw_body or "{}")
+
+        def _serve_audio(self, raw_path: str) -> None:
+            if not raw_path:
+                self._write_json({"error": "Audio path is required."}, status=400)
+                return
+            audio_path = Path(raw_path).expanduser()
+            if audio_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                self._write_json({"error": "Unsupported audio type."}, status=400)
+                return
+            if not audio_path.is_file():
+                self._write_json({"error": "Audio file not found."}, status=404)
+                return
+
+            try:
+                data = audio_path.read_bytes()
+            except OSError as exc:
+                self._write_json({"error": str(exc)}, status=500)
+                return
+
+            content_type = AUDIO_CONTENT_TYPES.get(
+                audio_path.suffix.lower(), "application/octet-stream"
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Accept-Ranges", "none")
+            self.end_headers()
+            self.wfile.write(data)
 
         def _write_json(self, payload: dict, status: int = 200) -> None:
             body = json.dumps(payload).encode("utf-8")

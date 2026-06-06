@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from dj_library_prep.models import Track, utc_now_iso
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 UNREVIEWED_STATUSES = ("pending", "needs_review")
 
@@ -111,6 +111,22 @@ CREATE TABLE IF NOT EXISTS cue_points (
 );
 """
 
+PADS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS pads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER NOT NULL,
+    pad_index INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    timestamp_seconds REAL,
+    beat_index INTEGER,
+    source TEXT NOT NULL DEFAULT 'auto',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(track_id) REFERENCES tracks(id),
+    UNIQUE(track_id, pad_index)
+);
+"""
+
 
 def connect(database_path: str | Path) -> sqlite3.Connection:
     path = Path(database_path)
@@ -128,6 +144,7 @@ def initialize(connection: sqlite3.Connection) -> None:
     connection.execute(REVIEW_HISTORY_SCHEMA)
     connection.execute(BEAT_TIMESTAMPS_SCHEMA)
     connection.execute(CUE_POINTS_SCHEMA)
+    connection.execute(PADS_SCHEMA)
     _run_migrations(connection)
     connection.commit()
 
@@ -556,6 +573,86 @@ def list_cue_points(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     return list(cursor.fetchall())
 
 
+def list_pads(connection: sqlite3.Connection, track_id: int) -> list[sqlite3.Row]:
+    cursor = connection.execute(
+        "SELECT * FROM pads WHERE track_id = ? ORDER BY pad_index",
+        (track_id,),
+    )
+    return list(cursor.fetchall())
+
+
+def get_pad(
+    connection: sqlite3.Connection, track_id: int, pad_index: int
+) -> sqlite3.Row | None:
+    cursor = connection.execute(
+        "SELECT * FROM pads WHERE track_id = ? AND pad_index = ?",
+        (track_id, pad_index),
+    )
+    return cursor.fetchone()
+
+
+def upsert_pad(
+    connection: sqlite3.Connection,
+    track_id: int,
+    pad_index: int,
+    label: str,
+    timestamp_seconds: float | None,
+    beat_index: int | None,
+    source: str,
+) -> sqlite3.Row | None:
+    timestamp = utc_now_iso()
+    connection.execute(
+        """
+        INSERT INTO pads (
+            track_id, pad_index, label, timestamp_seconds, beat_index,
+            source, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(track_id, pad_index) DO UPDATE SET
+            label = excluded.label,
+            timestamp_seconds = excluded.timestamp_seconds,
+            beat_index = excluded.beat_index,
+            source = excluded.source,
+            updated_at = excluded.updated_at
+        """,
+        (
+            track_id,
+            pad_index,
+            label,
+            timestamp_seconds,
+            beat_index,
+            source,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+    return get_pad(connection, track_id, pad_index)
+
+
+def clear_pad(connection: sqlite3.Connection, track_id: int, pad_index: int) -> None:
+    connection.execute(
+        "DELETE FROM pads WHERE track_id = ? AND pad_index = ?",
+        (track_id, pad_index),
+    )
+    connection.commit()
+
+
+def list_beat_timestamps_for_track(
+    connection: sqlite3.Connection, track_id: int
+) -> list[float]:
+    cursor = connection.execute(
+        """
+        SELECT timestamp_seconds
+        FROM beat_timestamps
+        WHERE track_id = ?
+        ORDER BY beat_index
+        """,
+        (track_id,),
+    )
+    return [float(row["timestamp_seconds"]) for row in cursor.fetchall()]
+
+
 def _existing_cue_labels(
     connection: sqlite3.Connection,
     track_id: int | None,
@@ -740,10 +837,25 @@ def _migrate_track_lookup_indexes(connection: sqlite3.Connection) -> None:
             connection.execute(sql)
 
 
+def _migrate_pads_table(connection: sqlite3.Connection) -> None:
+    connection.execute(PADS_SCHEMA)
+    indexes = {
+        row["name"]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+        )
+    }
+    if "idx_pads_track_id" not in indexes:
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pads_track_id ON pads(track_id)"
+        )
+
+
 MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     (1, _migrate_legacy_bpm_columns),
     (2, _migrate_review_history_audit_columns),
-    (CURRENT_SCHEMA_VERSION, _migrate_track_lookup_indexes),
+    (3, _migrate_track_lookup_indexes),
+    (CURRENT_SCHEMA_VERSION, _migrate_pads_table),
 )
 
 
