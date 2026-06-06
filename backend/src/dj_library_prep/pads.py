@@ -144,6 +144,56 @@ def autofill_pads(
     return list_pads_for_track(track_id, database_path)
 
 
+def batch_autofill_pads(
+    *,
+    phrase_length: int = DEFAULT_PHRASE_LENGTH,
+    skip_existing: bool = True,
+    database_path: str | Path = "djcuecraft.sqlite3",
+) -> dict[str, int]:
+    """Auto-fill pads for every track that has stored beats.
+
+    When *skip_existing* is True (the default), tracks that already have at
+    least one filled pad are left untouched.  Raises ValueError for an invalid
+    phrase_length.  Each track is processed independently; an error on one
+    track is counted and does not stop the batch.
+    """
+    if phrase_length <= 0:
+        raise ValueError("Phrase length must be a positive number of beats.")
+
+    with database.connect(database_path) as connection:
+        tracks = list(database.list_tracks(connection))
+
+    total_tracks = len(tracks)
+    filled = 0
+    skipped_existing = 0
+    skipped_no_beats = 0
+    failed = 0
+
+    for track in tracks:
+        track_id = int(track["id"])
+        try:
+            with database.connect(database_path) as connection:
+                beats = database.list_beat_timestamps_for_track(connection, track_id)
+                if not beats:
+                    skipped_no_beats += 1
+                    continue
+                if skip_existing and database.count_filled_pads(connection, track_id) > 0:
+                    skipped_existing += 1
+                    continue
+            autofill_pads(track_id, phrase_length=phrase_length, database_path=database_path)
+            filled += 1
+        except Exception:
+            failed += 1
+
+    return {
+        "total_tracks": total_tracks,
+        "filled": filled,
+        "skipped_existing_pads": skipped_existing,
+        "skipped_no_beats": skipped_no_beats,
+        "failed": failed,
+    }
+
+
 def _autofill_from_phrase(
     connection: sqlite3.Connection,
     track_id: int,

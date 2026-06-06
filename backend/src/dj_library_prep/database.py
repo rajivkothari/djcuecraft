@@ -659,6 +659,14 @@ def clear_all_pads(connection: sqlite3.Connection, track_id: int) -> None:
     connection.commit()
 
 
+def count_filled_pads(connection: sqlite3.Connection, track_id: int) -> int:
+    cursor = connection.execute(
+        "SELECT COUNT(*) FROM pads WHERE track_id = ? AND timestamp_seconds IS NOT NULL",
+        (track_id,),
+    )
+    return int(cursor.fetchone()[0])
+
+
 def list_all_pads(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     cursor = connection.execute(
         """

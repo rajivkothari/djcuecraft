@@ -204,6 +204,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="CSV output path",
     )
 
+    pad_fill_parser = subparsers.add_parser(
+        "auto-fill-pads",
+        help="Auto-fill pads for all tracks that have beats but no pads yet",
+    )
+    pad_fill_parser.add_argument(
+        "--database",
+        default="djcuecraft.sqlite3",
+        help="SQLite database path. Defaults to djcuecraft.sqlite3",
+    )
+    pad_fill_parser.add_argument(
+        "--phrase-length",
+        type=int,
+        default=32,
+        help="Beats per phrase for pad placement. Defaults to 32.",
+    )
+    pad_fill_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Re-fill pads even for tracks that already have pads.",
+    )
+
     ui_parser = subparsers.add_parser(
         "serve-ui",
         help="Run the local track review UI",
@@ -270,6 +292,22 @@ def main(argv: list[str] | None = None) -> int:
         exported_count = export_cue_points_to_csv(args.database, args.output)
         print(f"Exported {exported_count} cue points to {args.output}")
         print("No audio files or DJ software libraries were modified.")
+        return 0
+
+    if args.command == "auto-fill-pads":
+        from dj_library_prep.pads import batch_autofill_pads
+        summary = batch_autofill_pads(
+            phrase_length=args.phrase_length,
+            skip_existing=not args.force,
+            database_path=args.database,
+        )
+        print("Batch auto-fill summary")
+        print(f"  total tracks: {summary['total_tracks']}")
+        print(f"  filled: {summary['filled']}")
+        print(f"  skipped (already have pads): {summary['skipped_existing_pads']}")
+        print(f"  skipped (no beats stored): {summary['skipped_no_beats']}")
+        print(f"  failed: {summary['failed']}")
+        print("No audio files were modified.")
         return 0
 
     if args.command == "serve-ui":

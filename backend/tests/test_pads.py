@@ -250,3 +250,111 @@ def test_autofill_preset_preserves_manual_pads(tmp_path) -> None:
     assert refreshed[0]["source"] == "manual"
     assert refreshed[1]["label"] == "2 Bars"
     assert refreshed[1]["source"] == "auto"
+
+
+# ---- batch_autofill_pads tests ----
+
+def _track_without_beats(db_path, file_path="C:/Music/no-beats.mp3"):
+    from dj_library_prep.models import Track
+    track = Track(file_path=file_path, file_name=file_path.split("/")[-1], file_extension=".mp3")
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved = database.get_track_by_file_path(connection, track.file_path)
+    return saved["id"]
+
+
+def test_batch_autofill_fills_track_with_beats(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path)
+
+    summary = pads.batch_autofill_pads(database_path=db_path)
+
+    assert summary["filled"] == 1
+    assert summary["skipped_no_beats"] == 0
+    filled = pads.list_pads_for_track(track_id, db_path)
+    assert filled[0]["timestamp_seconds"] == 0.0
+
+
+def test_batch_autofill_skips_track_without_beats(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    _track_without_beats(db_path)
+
+    summary = pads.batch_autofill_pads(database_path=db_path)
+
+    assert summary["filled"] == 0
+    assert summary["skipped_no_beats"] == 1
+
+
+def test_batch_autofill_skips_track_with_existing_pads_when_skip_existing(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path)
+    pads.autofill_pads(track_id, database_path=db_path)
+
+    summary = pads.batch_autofill_pads(skip_existing=True, database_path=db_path)
+
+    assert summary["skipped_existing_pads"] == 1
+    assert summary["filled"] == 0
+
+
+def test_batch_autofill_refills_when_skip_existing_false(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path)
+    pads.autofill_pads(track_id, database_path=db_path)
+    pads.set_pad(track_id, 0, label="Custom", timestamp_seconds=99.0, database_path=db_path)
+
+    summary = pads.batch_autofill_pads(skip_existing=False, database_path=db_path)
+
+    assert summary["filled"] == 1
+    # manual pads still preserved by autofill_pads invariant
+    refreshed = pads.list_pads_for_track(track_id, db_path)
+    assert refreshed[0]["label"] == "Custom"
+    assert refreshed[0]["source"] == "manual"
+
+
+def test_batch_autofill_handles_mixed_tracks(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    _track_with_beats(db_path, beat_count=300)
+    _track_without_beats(db_path, file_path="C:/Music/no-beats.mp3")
+
+    summary = pads.batch_autofill_pads(database_path=db_path)
+
+    assert summary["total_tracks"] == 2
+    assert summary["filled"] == 1
+    assert summary["skipped_no_beats"] == 1
+
+
+def test_batch_autofill_returns_correct_summary_counts(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id_a = _track_with_beats(db_path, beat_count=300)
+    pads.autofill_pads(track_id_a, database_path=db_path)  # already has pads
+    _track_with_beats.__wrapped__ = None  # reset
+    track_b = pads.list_pads_for_track.__module__  # just a reference check
+    # second track with beats but no pads
+    from dj_library_prep.models import Track
+    track2 = Track(file_path="C:/Music/track2.mp3", file_name="track2.mp3", file_extension=".mp3")
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track2])
+        saved2 = database.get_track_by_file_path(connection, track2.file_path)
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved2["id"],
+            file_path=saved2["file_path"],
+            beat_timestamps=[round(i * 0.5, 3) for i in range(100)],
+            beat_confidence=0.8,
+        )
+        connection.commit()
+
+    summary = pads.batch_autofill_pads(skip_existing=True, database_path=db_path)
+
+    assert summary["total_tracks"] == 2
+    assert summary["filled"] == 1
+    assert summary["skipped_existing_pads"] == 1
+    assert summary["skipped_no_beats"] == 0
+    assert summary["failed"] == 0
+
+
+def test_batch_autofill_invalid_phrase_length_raises(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    import pytest
+    with pytest.raises(ValueError, match="positive"):
+        pads.batch_autofill_pads(phrase_length=0, database_path=db_path)

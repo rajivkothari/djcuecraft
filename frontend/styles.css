@@ -227,7 +227,13 @@ main {
   display: grid;
   gap: 14px;
   padding: 14px;
-  padding-bottom: 52vh;
+  padding-bottom: 40vh;
+}
+
+.libraryActions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
 }
 
 textarea {
@@ -616,21 +622,17 @@ dd {
 
 /* ---- Cue editor — persistent bottom panel ---- */
 
-main {
-  padding-bottom: 52vh;
-}
-
 .cueEditor {
   background: var(--bg);
   border-top: 2px solid var(--accent);
   bottom: 0;
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5);
   display: grid;
-  gap: 10px;
+  gap: 4px;
   left: 0;
-  max-height: 50vh;
+  max-height: 38vh;
   overflow: auto;
-  padding: 12px 16px;
+  padding: 8px 12px;
   position: fixed;
   right: 0;
   z-index: 20;
@@ -640,25 +642,31 @@ main {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  justify-content: space-between;
+  gap: 8px;
 }
 
 .editorTrackInfo {
   display: grid;
-  gap: 2px;
+  gap: 1px;
+  max-width: 200px;
+  min-width: 0;
 }
 
 .editorTrackInfo strong {
   color: var(--text);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editorTrackInfo span {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editorTransport {
@@ -754,7 +762,7 @@ main {
   border-radius: 8px;
   cursor: pointer;
   display: block;
-  height: 80px;
+  height: 50px;
   width: 100%;
 }
 
@@ -764,18 +772,11 @@ main {
   border-radius: 8px;
   cursor: crosshair;
   display: block;
-  height: 120px;
+  height: 80px;
   width: 100%;
 }
 
-/* ---- Pad bar ---- */
-
-.padBar {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
+/* ---- Preset selector (inline in transport) ---- */
 
 .padPresetLabel {
   align-items: center;
@@ -783,94 +784,103 @@ main {
   display: flex;
   font-size: 12px;
   font-weight: 600;
-  gap: 6px;
+  gap: 4px;
 }
 
 .padPresetLabel select {
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
   font-size: 12px;
-  min-height: 28px;
-  padding: 2px 6px;
+  min-height: 26px;
+  padding: 2px 4px;
 }
 
 .padState {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-/* ---- Pad grid ---- */
+/* ---- Compact pad grid ---- */
 
 .padGrid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
 }
 
-.pad {
+.padCompact {
+  align-items: center;
   background: var(--bg-surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  display: grid;
-  gap: 6px;
-  padding: 10px;
+  border-radius: 6px;
+  display: flex;
+  gap: 5px;
+  min-height: 32px;
+  padding: 3px 7px;
 }
 
-.pad.padManual {
+.padCompact.padManual {
   border-color: var(--accent);
 }
 
-.pad.padEmpty {
+.padCompact.padEmpty {
   border-style: dashed;
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
-.padTop {
-  align-items: center;
-  display: flex;
-  gap: 6px;
-  justify-content: space-between;
+.padNum {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 14px;
 }
 
 .padLabel {
   color: var(--text);
-  font-weight: 700;
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 90px;
+  min-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .padLabelInput {
-  flex: 1;
-  min-height: 26px;
-  width: 100%;
-}
-
-.padRename {
-  background: var(--bg-surface);
-  border-color: var(--line);
-  color: var(--text);
-  flex-shrink: 0;
-  font-size: 13px;
-  min-height: 24px;
-  padding: 0 6px;
+  font-size: 12px;
+  min-height: 22px;
+  width: 80px;
 }
 
 .padTime {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+  min-width: 34px;
 }
 
-.padButtons {
-  display: grid;
-  gap: 6px;
-  grid-template-columns: repeat(3, 1fr);
+.padCompact button {
+  font-size: 11px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
 }
 
-.padButtons button {
-  min-height: 28px;
-  padding: 0 6px;
+.padCompact .padJump {
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  color: var(--text-on-accent);
 }
 
-.padButtons .secondaryButton {
-  margin-top: 0;
+.padCompact .secondaryButton {
+  border-radius: 4px;
+  font-size: 11px;
+  min-height: 24px;
+  padding: 0 4px;
 }
 
 /* ---- Responsive ---- */
@@ -897,15 +907,11 @@ main {
 
   main {
     padding: 8px;
-    padding-bottom: 62vh;
-  }
-
-  .padGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-bottom: 48vh;
   }
 
   .cueEditor {
-    max-height: 60vh;
+    max-height: 45vh;
   }
 }
 

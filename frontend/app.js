@@ -27,6 +27,8 @@ const padPresetSelect = document.querySelector("#padPreset");
 const padState = document.querySelector("#padState");
 const padGrid = document.querySelector("#padGrid");
 const padTemplate = document.querySelector("#padTemplate");
+const batchAutoFillButton = document.querySelector("#batchAutoFillButton");
+const batchAutoFillState = document.querySelector("#batchAutoFillState");
 
 const editableFields = [
   "normalized_decade",
@@ -417,6 +419,7 @@ stopButton.addEventListener("click", stopPlayback);
 analyzeBeatsButton.addEventListener("click", analyzeTrackBeats);
 autoFillPadsButton.addEventListener("click", autoFillPads);
 clearAllPadsButton.addEventListener("click", clearAllPads);
+batchAutoFillButton.addEventListener("click", batchAutoFill);
 trackVolume.addEventListener("input", () => {
   getAudioContext();
   if (trackGainNode) trackGainNode.gain.value = trackVolume.value / 100;
@@ -542,8 +545,8 @@ async function loadAudio(track) {
   playButton.disabled = true;
   stopButton.disabled = true;
   editorTime.textContent = "Loading audio…";
-  drawCanvasMessage(overviewCanvas, 80, "Loading audio…");
-  drawCanvasMessage(detailCanvas, 120, "");
+  drawCanvasMessage(overviewCanvas, 50, "Loading audio…");
+  drawCanvasMessage(detailCanvas, 80, "");
   try {
     const response = await fetch(`/api/audio?path=${encodeURIComponent(track.file_path)}`);
     if (!response.ok) throw new Error("audio load failed");
@@ -570,8 +573,8 @@ async function loadAudio(track) {
   } catch (error) {
     audioBuffer = null;
     editorTime.textContent = "Audio unavailable";
-    drawCanvasMessage(overviewCanvas, 80, "Audio unavailable");
-    drawCanvasMessage(detailCanvas, 120, "");
+    drawCanvasMessage(overviewCanvas, 50, "Audio unavailable");
+    drawCanvasMessage(detailCanvas, 80, "");
   }
 }
 
@@ -836,7 +839,7 @@ function getStyle(prop) {
 function drawOverview() {
   const canvas = overviewCanvas;
   const cssWidth = canvas.clientWidth || 800;
-  const cssHeight = 80;
+  const cssHeight = 50;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = cssWidth * dpr;
   canvas.height = cssHeight * dpr;
@@ -903,7 +906,7 @@ function drawOverview() {
 function drawDetail() {
   const canvas = detailCanvas;
   const cssWidth = canvas.clientWidth || 800;
-  const cssHeight = 120;
+  const cssHeight = 80;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = cssWidth * dpr;
   canvas.height = cssHeight * dpr;
@@ -1108,8 +1111,9 @@ function renderPads() {
   for (const pad of padsData) {
     const el = padTemplate.content.firstElementChild.cloneNode(true);
     el.dataset.index = pad.pad_index;
+    el.querySelector(".padNum").textContent = pad.pad_index + 1;
     el.querySelector(".padLabel").textContent = pad.label || `Pad ${pad.pad_index + 1}`;
-    el.querySelector('[data-field="time"]').textContent =
+    el.querySelector(".padTime").textContent =
       pad.timestamp_seconds != null ? formatTime(pad.timestamp_seconds) : "—";
 
     const jumpBtn = el.querySelector(".padJump");
@@ -1122,13 +1126,8 @@ function renderPads() {
     });
 
     el.querySelector(".padSet").addEventListener("click", () => setPadFromPlayhead(pad.pad_index));
-    el.querySelector(".padRename").addEventListener("click", () => renamePad(el, pad));
-
-    const clearBtn = el.querySelector(".padClear");
-    if (clearBtn) {
-      clearBtn.disabled = pad.timestamp_seconds == null;
-      clearBtn.addEventListener("click", () => clearPad(pad.pad_index));
-    }
+    el.querySelector(".padRename").addEventListener("click", () => renamePadCompact(el, pad));
+    el.querySelector(".padClear").addEventListener("click", () => clearPad(pad.pad_index));
 
     if (pad.source === "manual") el.classList.add("padManual");
     if (pad.timestamp_seconds == null) el.classList.add("padEmpty");
@@ -1143,7 +1142,7 @@ async function setPadFromPlayhead(index) {
   await savePad(index, { timestamp_seconds: position });
 }
 
-function renamePad(el, pad) {
+function renamePadCompact(el, pad) {
   const labelSpan = el.querySelector(".padLabel");
   const renameBtn = el.querySelector(".padRename");
   const input = document.createElement("input");
@@ -1152,7 +1151,7 @@ function renamePad(el, pad) {
 
   labelSpan.hidden = true;
   renameBtn.hidden = true;
-  el.querySelector(".padTop").appendChild(input);
+  labelSpan.parentNode.insertBefore(input, labelSpan.nextSibling);
   input.focus();
   input.select();
 
@@ -1285,6 +1284,31 @@ async function autoFillPads() {
     padState.textContent = "Auto-fill failed";
   } finally {
     autoFillPadsButton.disabled = false;
+  }
+}
+
+async function batchAutoFill() {
+  batchAutoFillButton.disabled = true;
+  batchAutoFillState.textContent = "Auto-filling all tracks…";
+  try {
+    const response = await fetch("/api/pads/batch-auto-fill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phrase_length: 32, skip_existing: true }),
+    });
+    if (!response.ok) {
+      batchAutoFillState.textContent = await responseErrorMessage(response, "Batch auto-fill failed");
+      return;
+    }
+    const payload = await response.json();
+    const s = payload.summary;
+    batchAutoFillState.textContent =
+      `${s.filled} filled, ${s.skipped_existing_pads} already had pads, ${s.skipped_no_beats} had no beats`;
+    if (selectedTrack) await loadPads(selectedTrack.id);
+  } catch (_) {
+    batchAutoFillState.textContent = "Batch auto-fill failed";
+  } finally {
+    batchAutoFillButton.disabled = false;
   }
 }
 

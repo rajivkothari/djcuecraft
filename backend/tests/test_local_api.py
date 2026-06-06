@@ -710,3 +710,70 @@ def test_bulk_approve_creates_review_history_with_bulk_action_source(tmp_path) -
     assert len(history) == 1
     assert history[0]["source"] == "bulk_action"
     assert history[0]["action"] == "bulk_approve"
+
+
+# ---- batch auto-fill API tests ----
+
+def _track_with_beats_api(db_path, file_path="C:/Music/api_beats.mp3", beat_count=100):
+    from dj_library_prep import database
+    track = Track(file_path=file_path, file_name=file_path.split("/")[-1], file_extension=".mp3")
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved = database.get_track_by_file_path(connection, track.file_path)
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved["id"],
+            file_path=saved["file_path"],
+            beat_timestamps=[round(i * 0.5, 3) for i in range(beat_count)],
+            beat_confidence=0.8,
+        )
+        connection.commit()
+    return saved
+
+
+def test_batch_auto_fill_endpoint_fills_tracks(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    _track_with_beats_api(db_path)
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/pads/batch-auto-fill",
+                                   {"phrase_length": 32, "skip_existing": True})
+
+    assert status == 200
+    s = payload["summary"]
+    assert s["filled"] == 1
+    assert s["skipped_no_beats"] == 0
+
+
+def test_batch_auto_fill_endpoint_skips_tracks_with_existing_pads(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+    saved = _track_with_beats_api(db_path)
+
+    from dj_library_prep import pads as pad_service
+    pad_service.autofill_pads(saved["id"], database_path=db_path)
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/pads/batch-auto-fill",
+                                   {"skip_existing": True})
+
+    assert status == 200
+    s = payload["summary"]
+    assert s["skipped_existing_pads"] == 1
+    assert s["filled"] == 0
+
+
+def test_batch_auto_fill_endpoint_invalid_phrase_length_returns_400(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/pads/batch-auto-fill",
+                                   {"phrase_length": 0})
+
+    assert status == 400
+    assert "error" in payload

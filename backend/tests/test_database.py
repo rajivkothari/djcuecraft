@@ -515,6 +515,32 @@ def test_list_tracks_includes_suggestion_columns(tmp_path) -> None:
     assert rows[0]["suggestion_confidence"] == 0.8
 
 
+def test_count_filled_pads_returns_zero_for_no_pads(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(file_path="C:/Music/a.mp3", file_name="a.mp3", file_extension=".mp3")
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved = database.get_track_by_file_path(connection, track.file_path)
+        count = database.count_filled_pads(connection, saved["id"])
+    assert count == 0
+
+
+def test_count_filled_pads_counts_only_filled_slots(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(file_path="C:/Music/a.mp3", file_name="a.mp3", file_extension=".mp3")
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        saved = database.get_track_by_file_path(connection, track.file_path)
+        track_id = saved["id"]
+        # pad 0 filled, pad 1 empty (no row), pad 2 filled
+        database.upsert_pad(connection, track_id=track_id, pad_index=0, label="Start",
+                            timestamp_seconds=0.0, beat_index=0, source="auto")
+        database.upsert_pad(connection, track_id=track_id, pad_index=2, label="Drop",
+                            timestamp_seconds=10.0, beat_index=8, source="auto")
+        count = database.count_filled_pads(connection, track_id)
+    assert count == 2
+
+
 def _create_legacy_tracks_table(db_path) -> None:
     connection = sqlite3.connect(db_path)
     connection.execute(

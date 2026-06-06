@@ -39,6 +39,10 @@
     </div>
 
     <main>
+      <div class="libraryActions">
+        <button id="batchAutoFillButton" type="button" class="secondaryButton">Auto-fill all tracks</button>
+        <span id="batchAutoFillState" class="padState"></span>
+      </div>
       <p class="hint">Click a track to edit its metadata and load it into the cue editor below.</p>
       <div class="tableShell">
         <table>
@@ -60,27 +64,23 @@
     <section id="cueEditor" class="cueEditor">
       <div class="editorBar">
         <div class="editorTrackInfo">
-          <strong id="editorTrackName">Select a track to load the cue editor</strong>
+          <strong id="editorTrackName">Select a track</strong>
           <span id="editorTrackMeta"></span>
         </div>
         <div class="editorTransport">
-          <label class="volumeControl">
-            Track
-            <input type="range" id="trackVolume" min="0" max="100" value="100" step="1" />
-          </label>
-          <label class="volumeControl">
-            Click
-            <input type="range" id="metronomeVolume" min="0" max="100" value="80" step="1" />
-          </label>
           <button id="playButton" type="button" disabled>&#9654; Play</button>
           <button id="stopButton" class="secondaryButton" type="button" disabled>&#9632; Stop</button>
           <span id="editorTime" class="editorTime">0:00 / 0:00</span>
           <label class="metronomeToggle">
-            <input type="checkbox" id="metronomeToggle" /> Metronome
+            <input type="checkbox" id="metronomeToggle" /> Click
           </label>
-          <label class="zoomControl">
-            Zoom
-            <input type="range" id="zoomRange" min="4" max="64" value="16" step="4" />
+          <label class="volumeControl">
+            Trk
+            <input type="range" id="trackVolume" min="0" max="100" value="100" step="1" />
+          </label>
+          <label class="volumeControl">
+            Clk
+            <input type="range" id="metronomeVolume" min="0" max="100" value="80" step="1" />
           </label>
           <div class="nudgeControl">
             <button id="nudgeLeft" type="button" class="nudgeBtn secondaryButton" title="Shift grid earlier (shift+click = 1ms)">&#9664;</button>
@@ -88,37 +88,36 @@
             <button id="nudgeRight" type="button" class="nudgeBtn secondaryButton" title="Shift grid later (shift+click = 1ms)">&#9654;</button>
             <button id="nudgeReset" type="button" class="nudgeBtn secondaryButton" title="Reset grid offset">Reset</button>
           </div>
+          <label class="zoomControl">
+            Zoom
+            <input type="range" id="zoomRange" min="4" max="64" value="16" step="4" />
+          </label>
           <span id="editorBpm" class="editorBpm"></span>
+          <button id="analyzeBeatsButton" type="button" class="secondaryButton" disabled>Analyze</button>
+          <label class="padPresetLabel">
+            <select id="padPreset" disabled>
+              <option value="">phrase</option>
+            </select>
+          </label>
+          <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill</button>
+          <button id="clearAllPadsButton" class="secondaryButton" type="button" disabled>Clear all</button>
+          <span id="padState" class="padState"></span>
         </div>
       </div>
-      <canvas id="waveformOverview" class="waveformOverview" height="80"></canvas>
-      <canvas id="waveformDetail" class="waveformDetail" height="120"></canvas>
-      <div class="padBar">
-        <button id="analyzeBeatsButton" type="button" disabled>Analyze beats</button>
-        <label class="padPresetLabel">Preset
-          <select id="padPreset" disabled>
-            <option value="">phrase</option>
-          </select>
-        </label>
-        <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill pads</button>
-        <button id="clearAllPadsButton" class="secondaryButton" type="button" disabled>Clear all</button>
-        <span id="padState" class="padState"></span>
-      </div>
+      <canvas id="waveformOverview" class="waveformOverview" height="50"></canvas>
+      <canvas id="waveformDetail" class="waveformDetail" height="80"></canvas>
       <div id="padGrid" class="padGrid"></div>
     </section>
 
     <template id="padTemplate">
-      <div class="pad">
-        <div class="padTop">
-          <span class="padLabel" data-field="label"></span>
-          <button class="padRename secondaryButton" type="button" title="Rename pad" aria-label="Rename pad">&#9998;</button>
-        </div>
-        <div class="padTime" data-field="time">&mdash;</div>
-        <div class="padButtons">
-          <button class="padJump" type="button">Jump</button>
-          <button class="padSet secondaryButton" type="button" title="Set to current playhead">Set</button>
-          <button class="padClear secondaryButton" type="button" title="Clear this pad">Clear</button>
-        </div>
+      <div class="padCompact">
+        <span class="padNum"></span>
+        <span class="padLabel" data-field="label"></span>
+        <span class="padTime" data-field="time">—</span>
+        <button class="padJump" type="button" title="Jump to cue">&#9654;</button>
+        <button class="padSet secondaryButton" type="button" title="Set to playhead">&#9679;</button>
+        <button class="padClear secondaryButton" type="button" title="Clear pad">&#10005;</button>
+        <button class="padRename secondaryButton" type="button" title="Rename">&#9998;</button>
       </div>
     </template>
 

@@ -189,6 +189,24 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                 self._write_json({"pads": pads})
                 return
 
+            if parsed.path == "/api/pads/batch-auto-fill":
+                try:
+                    payload = self._read_json()
+                    phrase_length = int(
+                        payload.get("phrase_length", pad_service.DEFAULT_PHRASE_LENGTH)
+                    )
+                    skip_existing = bool(payload.get("skip_existing", True))
+                    summary = pad_service.batch_autofill_pads(
+                        phrase_length=phrase_length,
+                        skip_existing=skip_existing,
+                        database_path=database_path,
+                    )
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"summary": summary})
+                return
+
             if parsed.path == "/api/tracks/bulk-update":
                 try:
                     payload = self._read_json()

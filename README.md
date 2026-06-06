@@ -108,6 +108,15 @@ python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue "Load=0" 
 
 Auto-cue analysis fills in missing cue labels only. Existing cue points with matching labels are preserved and are not overwritten.
 
+After beats are stored, fill pads for all library tracks at once:
+
+```powershell
+python -m dj_library_prep.cli auto-fill-pads --database djcuecraft.sqlite3
+python -m dj_library_prep.cli auto-fill-pads --phrase-length 32 --force
+```
+
+`--force` re-fills tracks that already have pads (manual pads are still preserved).
+
 ## Example Review UI
 
 Double-click `launch-ui.bat`, or run:
