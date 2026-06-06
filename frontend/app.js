@@ -320,6 +320,7 @@ let nextBeatTime = 0;
 let rafId = null;
 
 let freqBands = null;
+let amplitudePeaks = null; // fast fallback while worker is computing
 let overviewOffscreen = null;
 let beatTimestamps = [];
 let beatConfidence = 0;
@@ -392,6 +393,7 @@ async function selectTrackForEditor(track, rowEl) {
   playStartOffset = 0;
   selectedTrack = track;
   freqBands = null;
+  amplitudePeaks = null;
   overviewOffscreen = null;
   beatTimestamps = [];
   beatConfidence = 0;
@@ -437,14 +439,20 @@ async function loadAudio(track) {
     playButton.disabled = false;
     stopButton.disabled = false;
 
-    drawCanvasMessage(overviewCanvas, 80, "Analyzing frequencies…");
-    drawCanvasMessage(detailCanvas, 120, "Analyzing frequencies…");
-    freqBands = await computeFrequencyBands(audioBuffer);
-    overviewOffscreen = null;
-
+    // Compute fast amplitude fallback so the canvas renders immediately
+    amplitudePeaks = computeAmplitudePeaks(audioBuffer, Math.ceil(audioBuffer.length / 1024));
     drawAll();
     updateTime();
     renderPads();
+
+    // Kick off frequency analysis in worker; canvas updates when done
+    computeFrequencyBands(audioBuffer).then((bands) => {
+      freqBands = bands;
+      overviewOffscreen = null;
+      drawAll();
+    }).catch(() => {
+      // freqBands stays null; amplitude fallback remains visible
+    });
   } catch (error) {
     audioBuffer = null;
     editorTime.textContent = "Audio unavailable";
@@ -640,71 +648,43 @@ function clickAt(ctx, when) {
   osc.stop(when + 0.05);
 }
 
-/* ---- Frequency Analysis (three-band FFT via OfflineAudioContext) ---- */
+/* ---- Frequency Analysis (IIR filter bands via Web Worker) ---- */
 
-async function computeFrequencyBands(buffer) {
-  const sampleRate = buffer.sampleRate;
-  const length = buffer.length;
-  const numChannels = buffer.numberOfChannels;
+let freqWorker = null;
+let freqWorkerPending = null; // { resolve, reject } for in-flight analysis
 
-  async function renderFiltered(type, freq) {
-    const offline = new OfflineAudioContext(1, length, sampleRate);
-    const source = offline.createBufferSource();
-    source.buffer = buffer;
-    const filter = offline.createBiquadFilter();
-    filter.type = type;
-    filter.frequency.value = freq;
-    if (type === "bandpass") {
-      filter.Q.value = 1.2;
-    }
-    source.connect(filter);
-    filter.connect(offline.destination);
-    source.start(0);
-    const rendered = await offline.startRendering();
-    return rendered.getChannelData(0);
+function getFreqWorker() {
+  if (!freqWorker) {
+    freqWorker = new Worker("./freq-worker.js");
+    freqWorker.onmessage = (e) => {
+      if (freqWorkerPending) {
+        const { resolve } = freqWorkerPending;
+        freqWorkerPending = null;
+        const { low, mid, high, numWindows, hopSize, sampleRate } = e.data;
+        resolve({ low, mid, high, numBuckets: numWindows, bucketSize: hopSize, sampleRate });
+      }
+    };
+    freqWorker.onerror = (err) => {
+      if (freqWorkerPending) {
+        const { reject } = freqWorkerPending;
+        freqWorkerPending = null;
+        reject(err);
+      }
+    };
   }
+  return freqWorker;
+}
 
-  const [lowData, midData, highData] = await Promise.all([
-    renderFiltered("lowpass", 250),
-    renderFiltered("bandpass", 1000),
-    renderFiltered("highpass", 4000),
-  ]);
-
-  const bucketSize = 2048;
-  const numBuckets = Math.ceil(length / bucketSize);
-  const low = new Float32Array(numBuckets);
-  const mid = new Float32Array(numBuckets);
-  const high = new Float32Array(numBuckets);
-
-  for (let i = 0; i < numBuckets; i++) {
-    const start = i * bucketSize;
-    const end = Math.min(start + bucketSize, length);
-    let sumL = 0, sumM = 0, sumH = 0;
-    for (let j = start; j < end; j++) {
-      sumL += lowData[j] * lowData[j];
-      sumM += midData[j] * midData[j];
-      sumH += highData[j] * highData[j];
-    }
-    const n = end - start;
-    low[i] = Math.sqrt(sumL / n);
-    mid[i] = Math.sqrt(sumM / n);
-    high[i] = Math.sqrt(sumH / n);
-  }
-
-  let maxVal = 0;
-  for (let i = 0; i < numBuckets; i++) {
-    const total = low[i] + mid[i] + high[i];
-    if (total > maxVal) maxVal = total;
-  }
-  if (maxVal > 0) {
-    for (let i = 0; i < numBuckets; i++) {
-      low[i] /= maxVal;
-      mid[i] /= maxVal;
-      high[i] /= maxVal;
-    }
-  }
-
-  return { low, mid, high, numBuckets, bucketSize, sampleRate: sampleRate };
+function computeFrequencyBands(buffer) {
+  return new Promise((resolve, reject) => {
+    const samples = buffer.getChannelData(0);
+    const sampleRate = buffer.sampleRate;
+    // Transfer a copy so the main thread keeps the original buffer intact
+    const copy = new Float32Array(samples);
+    const worker = getFreqWorker();
+    freqWorkerPending = { resolve, reject };
+    worker.postMessage({ samples: copy, sampleRate }, [copy.buffer]);
+  });
 }
 
 /* ---- Waveform Drawing ---- */
@@ -732,7 +712,7 @@ function drawOverview() {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-  if (!freqBands || !audioBuffer) {
+  if (!audioBuffer) {
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.font = "13px sans-serif";
     ctx.fillText("No waveform loaded", 10, cssHeight / 2 + 4);
@@ -747,11 +727,21 @@ function drawOverview() {
     offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     offCtx.fillStyle = bg;
     offCtx.fillRect(0, 0, cssWidth, cssHeight);
-    renderFreqWaveform(offCtx, cssWidth, cssHeight, freqBands, 0, duration);
+    if (freqBands) {
+      renderFreqWaveform(offCtx, cssWidth, cssHeight, freqBands, 0, duration);
+    } else if (amplitudePeaks) {
+      renderAmplitudeWaveform(offCtx, cssWidth, cssHeight, amplitudePeaks, 0, duration);
+    }
     renderBeatGrid(offCtx, cssWidth, cssHeight, 0, duration, false);
   }
 
   ctx.drawImage(overviewOffscreen, 0, 0);
+
+  if (!freqBands && amplitudePeaks) {
+    ctx.fillStyle = getStyle("--text-muted") || "rgba(255,255,255,0.3)";
+    ctx.font = "11px sans-serif";
+    ctx.fillText("Analyzing track…", 8, cssHeight - 6);
+  }
 
   if (duration > 0) {
     const windowSec = detailWindowSeconds();
@@ -789,13 +779,20 @@ function drawDetail() {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-  if (!freqBands || !audioBuffer) return;
+  if (!audioBuffer) return;
 
   const windowSec = detailWindowSeconds();
   const startTime = Math.max(0, detailCenter - windowSec / 2);
   const endTime = Math.min(duration, startTime + windowSec);
 
-  renderFreqWaveform(ctx, cssWidth, cssHeight, freqBands, startTime, endTime);
+  if (freqBands) {
+    renderFreqWaveform(ctx, cssWidth, cssHeight, freqBands, startTime, endTime);
+  } else if (amplitudePeaks) {
+    renderAmplitudeWaveform(ctx, cssWidth, cssHeight, amplitudePeaks, startTime, endTime);
+    ctx.fillStyle = getStyle("--text-muted") || "rgba(255,255,255,0.3)";
+    ctx.font = "13px sans-serif";
+    ctx.fillText("Analyzing track…", 10, cssHeight / 2 + 4);
+  }
   renderBeatGrid(ctx, cssWidth, cssHeight, startTime, endTime, true);
 
   if (duration > 0) {
@@ -832,6 +829,46 @@ function detailWindowSeconds() {
     return zoomBeats * (60 / Number(selectedTrack.bpm));
   }
   return zoomBeats * 0.5;
+}
+
+function computeAmplitudePeaks(buffer, numBuckets) {
+  const samples = buffer.getChannelData(0);
+  const bucketSize = Math.ceil(buffer.length / numBuckets);
+  const peaks = new Float32Array(numBuckets);
+  let maxVal = 0;
+  for (let i = 0; i < numBuckets; i++) {
+    const start = i * bucketSize;
+    const end = Math.min(start + bucketSize, buffer.length);
+    let sum = 0;
+    for (let j = start; j < end; j++) {
+      sum += samples[j] * samples[j];
+    }
+    peaks[i] = Math.sqrt(sum / (end - start));
+    if (peaks[i] > maxVal) maxVal = peaks[i];
+  }
+  if (maxVal > 0) {
+    for (let i = 0; i < numBuckets; i++) peaks[i] /= maxVal;
+  }
+  return { peaks, numBuckets, bucketSize };
+}
+
+function renderAmplitudeWaveform(ctx, width, height, ampData, startTime, endTime) {
+  const { peaks, numBuckets, bucketSize } = ampData;
+  const sampleRate = audioBuffer ? audioBuffer.sampleRate : 44100;
+  const midY = height / 2;
+  const color = getStyle("--waveform-wave") || "#e91e8c";
+  const startBucket = Math.floor((startTime * sampleRate) / bucketSize);
+  const endBucket = Math.ceil((endTime * sampleRate) / bucketSize);
+
+  ctx.fillStyle = color;
+  for (let x = 0; x < width; x++) {
+    const frac = x / width;
+    const bi = startBucket + frac * (endBucket - startBucket);
+    const idx = Math.min(Math.floor(bi), numBuckets - 1);
+    if (idx < 0) continue;
+    const amp = (peaks[idx] || 0) * midY * 0.95;
+    ctx.fillRect(x, midY - amp, 1, amp * 2 || 0.5);
+  }
 }
 
 function renderFreqWaveform(ctx, width, height, bands, startTime, endTime) {

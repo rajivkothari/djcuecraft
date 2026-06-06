@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 132 tests pass.
+All 132 tests pass. (No new backend tests — session 4 is frontend-only.)
 
 ---
 
@@ -185,6 +185,73 @@ A persistent bottom panel cue editor. Click any track's name cell to load it int
 - `_normalized_cue_template` rejects `CueTemplate` instances with **both** `beat_index` and `time_fraction` set (in addition to the existing rejection of neither set).
 - All existing presets (starter, phrase, extended) were converted to keyword-argument form: `CueTemplate(cue_label="...", beat_index=N)`. Behavior is identical; the change makes future reading unambiguous.
 - Custom `--cue` CLI entries remain beat-index-only. `parse_cue_template` always produces `CueTemplate(cue_label=..., beat_index=N, time_fraction=None)`.
+
+---
+
+## Three-Band Frequency Waveform (Session 4)
+
+**Files changed:** `frontend/app.js`, `frontend/freq-worker.js` (new)
+**Tests added:** none (frontend-only session). All 132 backend tests pass.
+
+### Frequency analysis approach
+
+Three-band energy is computed via a **Web Worker** (`frontend/freq-worker.js`) so the main thread never freezes. Analysis runs once per track load. The worker uses single-pole IIR filters on raw PCM samples from `audioBuffer.getChannelData(0)`:
+
+| Band | Frequency range | Filter type | Coefficient |
+|------|----------------|-------------|-------------|
+| Low | 20–250 Hz | Lowpass | `alpha = 2π × 250 / sampleRate` |
+| High | 4000–20000 Hz | Highpass | `alpha = 2π × 4000 / sampleRate` |
+| Mid | 250–4000 Hz | Derived | `mid = original − low − high` |
+
+Window size: `hopSize = 1024` samples, stride = hopSize (no overlap). For each window, RMS energy per band is computed. All three arrays are normalized relative to the global maximum summed energy so they scale correctly when rendered.
+
+**Known limitation:** Single-pole IIR filters have a gentle roll-off (~6 dB/octave). Frequency separation is approximate. The goal is visual track-structure differentiation, not acoustic accuracy.
+
+### Web Worker architecture
+
+`computeFrequencyBands(buffer)` returns a Promise. It:
+1. Copies `buffer.getChannelData(0)` to avoid mutating the original `AudioBuffer`.
+2. Posts `{ samples, sampleRate }` to `freq-worker.js` via Transferable (zero-copy).
+3. The worker posts back `{ low, mid, high, numWindows, hopSize, sampleRate }` as Transferables.
+4. Main thread resolves with `{ low, mid, high, numBuckets, bucketSize, sampleRate }` (same shape as before for `renderFreqWaveform` compatibility).
+
+`freqWorker` is a module-level singleton; the same Worker instance is reused across track loads. `freqWorkerPending` holds the active promise callbacks; a new analysis cancels any pending one.
+
+### Amplitude fallback
+
+`computeAmplitudePeaks(buffer, numBuckets)` runs synchronously on the main thread right after audio decodes. It computes RMS amplitude in `numBuckets` windows and normalizes. This result is stored in `amplitudePeaks`. While the worker is computing:
+- Both canvases render using `renderAmplitudeWaveform()` (single pink band, `--waveform-wave`).
+- The overview shows "Analyzing track…" in `--text-muted` at the bottom-left.
+- The detail canvas shows the same text overlay.
+
+When the worker resolves, `freqBands` is set, the overview offscreen cache is invalidated, and `drawAll()` is called. The transition from amplitude → frequency-colored waveform happens automatically.
+
+### Brand-aligned frequency colors
+
+| Band | CSS variable | Value | Represents |
+|------|-------------|-------|------------|
+| Low | `--waveform-low` | `#e91e8c` hot pink | Kick, bass |
+| Mid | `--waveform-mid` | `#c77dba` mauve | Snare, vocals, melody |
+| High | `--waveform-high` | `#8b8bbd` lavender | Hats, cymbals, air |
+
+The kick/bass band uses the primary brand accent color, making low-end energy the most visually prominent — matching how DJs read waveforms.
+
+### Rendering stacking order (per canvas column)
+
+For each x pixel, the three bands stack symmetrically from center:
+- Low band drawn first (outermost) at center ± lH/2
+- Mid band on top: center ± (lH + mH)/2
+- High band on top: center ± (lH + mH + hH)/2
+
+Heights are proportional to each band's energy share of the total at that column.
+
+### Overview cache invalidation
+
+The offscreen canvas is set to `null` on:
+- Track change (in `selectTrackForEditor`)
+- Window resize
+- When `freqBands` arrives from worker (`computeFrequencyBands(...).then(...)`)
+- When beats reload (`analyzeTrackBeats`)
 
 ---
 
