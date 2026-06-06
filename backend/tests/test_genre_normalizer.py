@@ -375,3 +375,70 @@ def test_normalize_genre_and_suggest_track_metadata_produce_consistent_results()
 
     assert norm.primary_genre == suggestion.suggested_genre
     assert norm.subgenre == suggestion.suggested_subgenre
+
+
+# ---- Part A: word_boundary false positive fix tests (session 7) ----
+
+def test_word_boundary_edit_in_filename_gets_edit_tag() -> None:
+    result = normalize_genre("Salsa", file_name="salsa_club_edit.mp3")
+
+    assert "edit" in result.dj_use_tags
+
+
+def test_word_boundary_unedited_does_not_get_edit_tag() -> None:
+    result = normalize_genre(None, title="Unedited Version")
+
+    assert "edit" not in result.dj_use_tags
+    assert "remix-edit" not in result.dj_use_tags
+
+
+def test_word_boundary_editors_cut_does_not_get_edit_tag() -> None:
+    result = normalize_genre(None, title="Editor's Cut")
+
+    assert "edit" not in result.dj_use_tags
+
+
+def test_word_boundary_parenthetical_radio_edit_gets_edit_tag() -> None:
+    result = normalize_genre(None, title="Song (Radio Edit)")
+
+    assert "edit" in result.dj_use_tags
+
+
+def test_word_boundary_bracket_intro_gets_intro_tag() -> None:
+    result = normalize_genre(None, title="Song [Intro]")
+
+    assert "intro" in result.dj_use_tags
+
+
+def test_word_boundary_introduction_does_not_get_intro_tag() -> None:
+    result = normalize_genre(None, title="Introduction to Jazz")
+
+    assert "intro" not in result.dj_use_tags
+
+
+def test_word_boundary_introducing_does_not_get_intro_tag() -> None:
+    result = normalize_genre(None, title="Introducing the Band")
+
+    assert "intro" not in result.dj_use_tags
+
+
+def test_word_boundary_salsa_clean_intro_file_still_gets_clean_and_intro() -> None:
+    # Regression: this case worked before and must continue to work
+    result = normalize_genre("Salsa", file_name="salsa_clean_intro.mp3")
+
+    assert result.primary_genre == "Latin"
+    assert result.subgenre == "Salsa"
+    assert "clean" in result.dj_use_tags
+    assert "intro" in result.dj_use_tags
+
+
+def test_word_boundary_remix_in_title_gets_remix_edit_tag() -> None:
+    result = normalize_genre(None, title="Song (Remix)")
+
+    assert "remix-edit" in result.dj_use_tags
+
+
+def test_word_boundary_remix_in_genre_tag_still_matches() -> None:
+    result = normalize_genre("Remix")
+
+    assert "remix-edit" in result.dj_use_tags

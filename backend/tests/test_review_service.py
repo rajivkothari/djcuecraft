@@ -308,3 +308,76 @@ def test_update_review_track_supports_edited_and_skipped_statuses(tmp_path) -> N
     assert history[0]["new_review_status"] == "skipped"
     assert history[1]["action"] == "edit"
     assert history[1]["new_review_status"] == "edited"
+
+
+# ---- Part B: bulk update service tests (session 7) ----
+
+from dj_library_prep.review_service import bulk_update_review_status
+
+
+def test_bulk_update_review_status_updates_multiple_tracks(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+
+    def save(fp):
+        t = Track(file_path=fp, file_name=fp.split("/")[-1], file_extension=".mp3", review_status=ReviewStatus.NEEDS_REVIEW)
+        with database.connect(db_path) as connection:
+            database.save_tracks(connection, [t])
+            return database.get_track_by_file_path(connection, fp)
+
+    t1 = save("C:/bulk/a.mp3")
+    t2 = save("C:/bulk/b.mp3")
+    t3 = save("C:/bulk/c.mp3")
+
+    result = bulk_update_review_status([t1["id"], t2["id"], t3["id"]], "approved", db_path)
+
+    assert result["updated"] == 3
+    assert result["skipped"] == 0
+    assert result["not_found"] == 0
+
+    with database.connect(db_path) as connection:
+        for track in (t1, t2, t3):
+            row = database.get_track_by_id(connection, track["id"])
+            assert row["review_status"] == "approved"
+
+
+def test_bulk_update_does_not_modify_normalized_columns(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    t = Track(
+        file_path="C:/bulk/d.mp3",
+        file_name="d.mp3",
+        file_extension=".mp3",
+        normalized_primary_genre="Latin",
+        normalized_subgenre="Salsa",
+        normalized_decade="90s",
+        review_status=ReviewStatus.NEEDS_REVIEW,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [t])
+        saved = database.get_track_by_file_path(connection, t.file_path)
+
+    bulk_update_review_status([saved["id"]], "approved", db_path)
+
+    with database.connect(db_path) as connection:
+        updated = database.get_track_by_id(connection, saved["id"])
+
+    assert updated["normalized_primary_genre"] == "Latin"
+    assert updated["normalized_subgenre"] == "Salsa"
+    assert updated["normalized_decade"] == "90s"
+    assert updated["review_status"] == "approved"
+
+
+def test_bulk_update_noop_for_tracks_already_at_target_status(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    t = Track(file_path="C:/bulk/e.mp3", file_name="e.mp3", file_extension=".mp3", review_status=ReviewStatus.APPROVED)
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [t])
+        saved = database.get_track_by_file_path(connection, t.file_path)
+
+    result = bulk_update_review_status([saved["id"]], "approved", db_path)
+
+    assert result["updated"] == 0
+    assert result["skipped"] == 1
+
+    with database.connect(db_path) as connection:
+        history = database.list_review_history_by_track_id(connection, saved["id"])
+    assert len(history) == 0

@@ -312,13 +312,13 @@ th {
   border-bottom: 1px solid var(--line-strong);
 }
 
-/* Collapsed track table: caret | Track | Artist/Title | Confidence | Status */
+/* Collapsed track table: checkbox | caret | Track | Artist/Title | Confidence | Status */
 th.caretCol,
 td.caretCol { width: 34px; padding-left: 12px; padding-right: 0; }
-thead th:nth-child(2) { width: 34%; }
 thead th:nth-child(3) { width: 34%; }
-thead th:nth-child(4) { width: 110px; }
-thead th:nth-child(5) { width: 130px; }
+thead th:nth-child(4) { width: 34%; }
+thead th:nth-child(5) { width: 110px; }
+thead th:nth-child(6) { width: 130px; }
 
 .hint {
   color: var(--text-muted);
@@ -886,4 +886,46 @@ main {
   .cueEditor {
     max-height: 60vh;
   }
+}
+
+/* Bulk action bar */
+.bulkBar {
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#bulkCount {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.bulkBar .secondaryButton {
+  margin-top: 0;
+}
+
+#bulkState {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Checkbox column */
+th.checkHeader,
+td.checkCell {
+  width: 40px;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 4px;
+}
+
+th.checkHeader input,
+td.checkCell input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }

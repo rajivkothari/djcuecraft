@@ -2,7 +2,57 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 165 tests pass.
+All 184 tests pass.
+
+---
+
+## Session 7 Summary
+
+### Part A — Fix DJ Utility Tag False Positives (P1-4)
+
+#### word_boundary match_type added to genre_normalizer.py
+
+`_rule_matches()` now supports `match_type: "word_boundary"`. Uses `\b` regex word boundaries so values like "intro" and "edit" match only as complete words. `_normalize_text()` strips parentheses/brackets to spaces first, so `(Edit)` and `[Intro]` become boundary-adjacent words and still match.
+
+#### dj_utility_tags.json rule changes
+
+- `keyword-intro`: changed from `contains` to `word_boundary`. Added values: "dj intro", "clean intro", "dirty intro", "quick intro". Prevents "Introduction to Jazz" and "Introducing the Band" from matching.
+- `keyword-remix`: changed from `contains` to `word_boundary`. Removed "edit" from values. Prevents "Unedited Version" and "Editor's Cut" from matching.
+- `keyword-edit`: NEW separate rule — `word_boundary`, values: "edit", "re-edit", "radio edit", "club edit", "dj edit", "short edit", "extended edit", "quick edit". Gets the `edit` dj_use_tag (distinct from `remix-edit`).
+
+Examples of false positives now fixed:
+- "Unedited Version" → no edit tag (was getting "remix-edit")
+- "Editor's Cut" → no edit tag
+- "Introduction to Jazz" → no intro tag (was getting "intro")
+- "Introducing the Band" → no intro tag
+- "salsa_club_edit.mp3" → correctly gets "edit" tag via word boundary on filename
+
+10 tests added in `test_genre_normalizer.py`.
+
+### Part B — Bulk Approve/Reject/Skip in Review UI (P2-1)
+
+#### bulk_update_review_status() in review_service.py
+
+New function `bulk_update_review_status(track_ids, review_status, database_path)`. Validates status is one of: approved, rejected, skipped. For each track_id: skips if not found (not_found count), skips if already at target status without writing history (skipped count), otherwise calls `database.update_track_review_fields()` keeping all normalized_* columns unchanged, then records review_history with `source="bulk_action"` and `action="bulk_approve" / "bulk_reject" / "bulk_skip"`. Commits once after all updates. Returns `{"updated": N, "skipped": M, "not_found": K}`.
+
+#### POST /api/tracks/bulk-update in local_api.py
+
+Request: `{"track_ids": [1, 2, 3], "review_status": "approved"}`. Returns 400 if track_ids is empty or review_status is invalid. Calls `bulk_update_review_status()` and returns the summary dict.
+
+#### Frontend: checkbox selection and bulk bar
+
+- Each track summary row has a checkbox (`<input class="trackCheck" data-track-id="...">`) as the first cell.
+- Table header has a `#selectAll` checkbox that toggles all visible checkboxes.
+- `#bulkBar` div (between header and main) shows/hides based on selected count. Contains: count badge, Approve/Reject/Skip buttons, status text.
+- `updateBulkBar()` called on every checkbox change and after `loadTracks()`.
+- `bulkAction(reviewStatus)` posts to `/api/tracks/bulk-update`, disables buttons during request, shows progress, calls `loadTracks()` on success.
+- Checkbox cell click does NOT trigger the row expand (existing click guard already skips `input` elements).
+
+#### Known limitation
+
+Bulk update only changes `review_status`. Normalized metadata fields cannot be bulk-edited — they require individual per-track review.
+
+6 tests added in `test_local_api.py`, 3 tests added in `test_review_service.py`.
 
 ---
 

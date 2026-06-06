@@ -3,6 +3,10 @@ const template = document.querySelector("#trackRowTemplate");
 const summaryEl = document.querySelector("#summary");
 const statusFilter = document.querySelector("#statusFilter");
 const refreshButton = document.querySelector("#refreshButton");
+const selectAll = document.querySelector("#selectAll");
+const bulkBar = document.querySelector("#bulkBar");
+const bulkCount = document.querySelector("#bulkCount");
+const bulkState = document.querySelector("#bulkState");
 
 const editorTrackName = document.querySelector("#editorTrackName");
 const editorTrackMeta = document.querySelector("#editorTrackMeta");
@@ -33,6 +37,24 @@ const editableFields = [
 
 refreshButton.addEventListener("click", loadTracks);
 statusFilter.addEventListener("change", loadTracks);
+
+selectAll.addEventListener("change", (e) => {
+  const checkboxes = document.querySelectorAll(".trackCheck");
+  for (const cb of checkboxes) {
+    cb.checked = e.target.checked;
+  }
+  updateBulkBar();
+});
+
+rowsEl.addEventListener("change", (e) => {
+  if (e.target.classList.contains("trackCheck")) {
+    updateBulkBar();
+  }
+});
+
+document.querySelector("#bulkApprove").addEventListener("click", () => bulkAction("approved"));
+document.querySelector("#bulkReject").addEventListener("click", () => bulkAction("rejected"));
+document.querySelector("#bulkSkip").addEventListener("click", () => bulkAction("skipped"));
 
 loadTracks();
 loadCuePresets();
@@ -74,6 +96,50 @@ async function loadTracks() {
     summaryEl.textContent = "Unable to load tracks";
     renderTableMessage("Unable to load tracks");
   }
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const checked = document.querySelectorAll(".trackCheck:checked");
+  const count = checked.length;
+  if (count > 0) {
+    bulkBar.hidden = false;
+    bulkCount.textContent = `${count} selected`;
+  } else {
+    bulkBar.hidden = true;
+    bulkState.textContent = "";
+  }
+}
+
+async function bulkAction(reviewStatus) {
+  const checkboxes = document.querySelectorAll(".trackCheck:checked");
+  const trackIds = Array.from(checkboxes).map((cb) => Number(cb.dataset.trackId));
+  if (trackIds.length === 0) return;
+
+  const buttons = document.querySelectorAll("#bulkBar button");
+  for (const btn of buttons) btn.disabled = true;
+  bulkState.textContent = `Applying ${reviewStatus} to ${trackIds.length} tracks...`;
+
+  try {
+    const response = await fetch("/api/tracks/bulk-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ track_ids: trackIds, review_status: reviewStatus }),
+    });
+
+    if (!response.ok) {
+      bulkState.textContent = await responseErrorMessage(response, "Bulk action failed");
+      return;
+    }
+
+    const result = await response.json();
+    bulkState.textContent = `${result.updated} updated, ${result.skipped} unchanged`;
+    await loadTracks();
+  } catch {
+    bulkState.textContent = "Bulk action failed";
+  } finally {
+    for (const btn of buttons) btn.disabled = false;
+  }
 }
 
 function renderTracks(tracks) {
@@ -94,6 +160,9 @@ function renderTrackGroup(track) {
   const detailRow = fragment.querySelector(".detailRow");
   summaryRow.dataset.trackId = track.id;
   detailRow.dataset.trackId = track.id;
+
+  const checkbox = summaryRow.querySelector(".trackCheck");
+  if (checkbox) checkbox.dataset.trackId = track.id;
 
   setFieldText(summaryRow, "file_name", track.file_name);
   setFieldText(summaryRow, "file_path", track.file_path);
@@ -292,7 +361,7 @@ function renderTableMessage(message) {
   rowsEl.innerHTML = "";
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 5;
+  cell.colSpan = 6;
   cell.textContent = message;
   row.appendChild(cell);
   rowsEl.appendChild(row);

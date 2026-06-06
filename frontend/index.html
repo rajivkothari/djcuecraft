@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DJ CueCraft Review</title>
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <header class="topbar">
@@ -30,12 +30,21 @@
       </div>
     </header>
 
+    <div id="bulkBar" class="bulkBar" hidden>
+      <span id="bulkCount">0 selected</span>
+      <button id="bulkApprove" type="button">Approve Selected</button>
+      <button id="bulkReject" class="secondaryButton" type="button">Reject Selected</button>
+      <button id="bulkSkip" class="secondaryButton" type="button">Skip Selected</button>
+      <span id="bulkState" class="bulkState"></span>
+    </div>
+
     <main>
       <p class="hint">Click a track to edit its metadata and load it into the cue editor below.</p>
       <div class="tableShell">
         <table>
           <thead>
             <tr>
+              <th class="checkHeader"><input type="checkbox" id="selectAll" title="Select all" /></th>
               <th class="caretCol"></th>
               <th>Track</th>
               <th>Artist / Title</th>
@@ -105,6 +114,7 @@
 
     <template id="trackRowTemplate">
       <tr class="summaryRow">
+        <td class="checkCell"><input type="checkbox" class="trackCheck" data-track-id="" /></td>
         <td class="caretCol"><span class="caret">&#9656;</span></td>
         <td class="trackCell">
           <strong data-field="file_name"></strong>
@@ -115,7 +125,7 @@
         <td><span class="statusBadge" data-field="summary_status"></span></td>
       </tr>
       <tr class="detailRow" hidden>
-        <td colspan="5">
+        <td colspan="6">
           <div class="detailGrid">
             <div class="detailBlock">
               <h3>Original Metadata</h3>
@@ -177,6 +187,6 @@
       </tr>
     </template>
 
-    <script src="./app.js?v=9"></script>
+    <script src="./app.js?v=10"></script>
   </body>
 </html>

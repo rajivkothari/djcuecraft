@@ -9,6 +9,8 @@ from dj_library_prep.genre_normalizer import suggest_track_metadata
 from dj_library_prep.models import ReviewStatus
 
 
+BULK_ALLOWED_STATUSES = {"approved", "rejected", "skipped"}
+
 EDITABLE_FIELDS = {
     "normalized_decade",
     "normalized_primary_genre",
@@ -92,6 +94,60 @@ def update_review_track(
     if updated is None:
         raise KeyError(f"Track not found after update: {track_id}")
     return _track_payload(updated)
+
+
+def bulk_update_review_status(
+    track_ids: list[int],
+    review_status: str,
+    database_path: str | Path = "djcuecraft.sqlite3",
+) -> dict[str, Any]:
+    if review_status not in BULK_ALLOWED_STATUSES:
+        raise ValueError(
+            f"Invalid review_status for bulk update: {review_status!r}. "
+            f"Allowed: {sorted(BULK_ALLOWED_STATUSES)}"
+        )
+
+    action_map = {"approved": "bulk_approve", "rejected": "bulk_reject", "skipped": "bulk_skip"}
+    bulk_action = action_map[review_status]
+    reason = f"Bulk {review_status} applied to {len(track_ids)} tracks."
+
+    updated_count = 0
+    skipped_count = 0
+    not_found_count = 0
+
+    with database.connect(database_path) as connection:
+        for track_id in track_ids:
+            current = database.get_track_by_id(connection, track_id)
+            if current is None:
+                not_found_count += 1
+                continue
+            if current["review_status"] == review_status:
+                skipped_count += 1
+                continue
+
+            new_track = database.update_track_review_fields(
+                connection=connection,
+                track_id=track_id,
+                normalized_decade=str(current["normalized_decade"] or "Unknown"),
+                normalized_primary_genre=current["normalized_primary_genre"],
+                normalized_subgenre=current["normalized_subgenre"],
+                dj_use_tags=str(current["dj_use_tags"] or "[]"),
+                review_status=review_status,
+            )
+            if new_track is not None:
+                database.record_review_history(
+                    connection,
+                    current,
+                    new_track,
+                    source="bulk_action",
+                    action=bulk_action,
+                    reason=reason,
+                )
+                updated_count += 1
+
+        connection.commit()
+
+    return {"updated": updated_count, "skipped": skipped_count, "not_found": not_found_count}
 
 
 def list_review_history(
