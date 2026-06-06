@@ -13,7 +13,7 @@
       "id": "genre-reggaeton",
       "field": "genre",
       "match_type": "exact",
-      "values": ["Reggaeton", "Reggaet\u00f3n"],
+      "values": ["Reggaeton", "Reggaetón"],
       "normalized_primary_genre": "Latin",
       "normalized_subgenre": "Reggaeton",
       "dj_use_tags": ["latin"],
@@ -54,6 +54,17 @@
       "review_status": "pending"
     },
     {
+      "id": "genre-merengue",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Merengue"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Merengue",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.84,
+      "review_status": "pending"
+    },
+    {
       "id": "keyword-dembow",
       "field": "keyword",
       "match_type": "contains",
@@ -62,6 +73,17 @@
       "normalized_subgenre": "Dembow",
       "dj_use_tags": ["latin"],
       "confidence": 0.66,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "keyword-salsa",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["salsa"],
+      "normalized_primary_genre": "Latin",
+      "normalized_subgenre": "Salsa",
+      "dj_use_tags": ["latin"],
+      "confidence": 0.56,
       "review_status": "needs_review"
     }
   ]

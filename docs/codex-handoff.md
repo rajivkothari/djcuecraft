@@ -2,7 +2,90 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 132 tests pass. (No new backend tests — session 4 is frontend-only.)
+All 165 tests pass.
+
+---
+
+## Session 6 Summary
+
+### Genre normalizer consolidation
+
+Removed `_suggest_genre_match()`, `MetadataSuggestionMatch`, and `_match()` entirely.
+`suggest_track_metadata()` now uses `normalize_context()` as its sole genre matching path.
+Both `normalize_genre()` and `suggest_track_metadata()` use the same JSON-rule engine,
+guaranteeing consistent primary_genre and subgenre for the same input.
+
+### requires_context rule enhancement
+
+`NormalizationRule` gained two new optional fields:
+- `requires_context: tuple[str, ...]` — rule fires only when at least one value is found anywhere in track metadata
+- `context_subgenre: str | None` — subgenre override when context fires (currently equals normalized_subgenre in all rules)
+
+Rules without `requires_context` behave exactly as before (backward compatible).
+
+### evidence_sources added to GenreNormalization
+
+`GenreNormalization` gained `evidence_sources: tuple[str, ...]`. Computed in `normalize_context()`
+by checking which metadata fields contain the best rule's values. Used by:
+- `_weak_evidence_requires_review()` — triggers review when only album/title/filename matched
+- `_broad_original_genre_requires_review()` — triggers review when genre tag is vague and match came from non-genre field
+
+### Confidence computation
+
+`_compute_suggestion_confidence()` uses the JSON rule confidence directly (no decade/evidence bonuses
+on top). Review conditions (unknown decade, needs_review status, weak evidence, broad genre conflict)
+cap confidence at `LOW_CONFIDENCE_REVIEW_THRESHOLD - 0.01` (0.69).
+
+Contextual rules (requires_context) have slightly higher confidence than their non-contextual siblings
+so they win in best-rule selection when context is present:
+- genre-hip-hop-club-rap: 0.93 (beats genre-hip-hop 0.92 when club context present)
+- genre-bollywood-dance: 0.80 (beats genre-bollywood 0.78 when dance/wedding context present)
+- genre-freestyle-latin: 0.80 (beats genre-freestyle 0.70 when latin context present)
+
+### Hindi mapping fix (P1-2 bug)
+
+`genre-hindi` rule changed from `Indian / Bollywood` (pending, 0.68) to `Indian / Hindi`
+(needs_review, 0.55). Hindi is a language, not a film industry. Needs human review.
+
+### New genre rules added
+
+**general_genres.json:**
+- Hip-Hop: Trap (0.80), Boom Bap (0.78), Club Rap contextual (0.93), Pop Rap as default
+- R&B: Soul contextual (0.91), Contemporary R&B as default, Funk (0.82), New Jack Swing (0.82)
+- Pop: Pop (0.76), Dance Pop exact (0.82), Dance Pop contextual (0.80)
+- Dance: House (0.80), EDM (0.76)
+- Freestyle: Club Freestyle (0.70, needs_review), Latin Freestyle contextual (0.80), keyword rules
+- Country: Country (0.84), Country Rock (0.82)
+
+**indian_music.json:**
+- Bollywood Dance contextual rule (0.80, dance/club/wedding context)
+- Bollywood base now maps to Classic Bollywood (0.78)
+- Hindi: Indian / Hindi, 0.55, needs_review (was Bollywood, was pending)
+- Punjabi: confidence lowered to 0.55, changed to needs_review
+- Punjabi Pop: Indian / Punjabi Pop (0.72)
+- Kollywood genre rule: Indian / Tamil-Kollywood (0.72, needs_review)
+- Kollywood dance contextual keyword rule (0.76, needs_review)
+- Tamil: needs_review status (was pending)
+- Telugu, Marathi, Gujarati, Rajasthani: all Indian / respective subgenre, 0.55, needs_review
+
+**latin_music.json:**
+- Merengue: Latin / Merengue (0.84, pending)
+- keyword-salsa: Latin / Salsa (0.56, needs_review) — enables filename/title salsa matching
+
+### Test assertion adjustments
+
+Two existing tests updated with documented reasons:
+
+1. `test_metadata_suggestion_maps_bollywood_dance`:
+   - Was: `suggested_genre == "Bollywood"`, label `"00s / Bollywood / Dance"`
+   - Now: `suggested_genre == "Indian"`, label `"00s / Indian / Bollywood Dance"`
+   - Reason: Bollywood primary_genre changed to Indian (the correct taxonomy) per spec
+
+2. `test_metadata_suggestion_indian_regional_tags_alone_need_review`:
+   - Hindi was: `"00s / Bollywood / Classic Bollywood"` → now `"00s / Indian / Hindi"` (Hindi fix)
+   - Punjabi was: `"00s / Punjabi / Punjabi Pop"` → now `"00s / Indian / Punjabi-Bhangra"` (JSON rule)
+   - Tamil was: `"00s / Tamil / Kollywood"` → now `"00s / Indian / Tamil"` (JSON rule)
+   - Reason: All three are now driven by JSON rules with correct Indian primary genre
 
 ---
 

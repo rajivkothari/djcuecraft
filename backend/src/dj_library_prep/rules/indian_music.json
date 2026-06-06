@@ -10,12 +10,25 @@
       "review_status": "needs_review"
     },
     {
+      "id": "genre-bollywood-dance",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Bollywood"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Bollywood Dance",
+      "dj_use_tags": ["indian"],
+      "requires_context": ["dance", "club", "wedding", "remix", "edit"],
+      "context_subgenre": "Bollywood Dance",
+      "confidence": 0.80,
+      "review_status": "pending"
+    },
+    {
       "id": "genre-bollywood",
       "field": "genre",
       "match_type": "exact",
       "values": ["Bollywood"],
       "normalized_primary_genre": "Indian",
-      "normalized_subgenre": "Bollywood",
+      "normalized_subgenre": "Classic Bollywood",
       "dj_use_tags": ["indian"],
       "confidence": 0.78,
       "review_status": "pending"
@@ -26,10 +39,10 @@
       "match_type": "exact",
       "values": ["Hindi"],
       "normalized_primary_genre": "Indian",
-      "normalized_subgenre": "Bollywood",
+      "normalized_subgenre": "Hindi",
       "dj_use_tags": ["indian"],
-      "confidence": 0.68,
-      "review_status": "pending"
+      "confidence": 0.55,
+      "review_status": "needs_review"
     },
     {
       "id": "genre-bhangra",
@@ -50,7 +63,18 @@
       "normalized_primary_genre": "Indian",
       "normalized_subgenre": "Punjabi-Bhangra",
       "dj_use_tags": ["indian"],
-      "confidence": 0.7,
+      "confidence": 0.55,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-punjabi-pop",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Punjabi Pop"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Punjabi Pop",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.72,
       "review_status": "pending"
     },
     {
@@ -62,7 +86,75 @@
       "normalized_subgenre": "Tamil",
       "dj_use_tags": ["indian"],
       "confidence": 0.72,
-      "review_status": "pending"
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-kollywood",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["kollywood"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Tamil-Kollywood",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.72,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "keyword-kollywood-dance",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["kollywood"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Tamil Dance",
+      "dj_use_tags": ["indian"],
+      "requires_context": ["dance", "club"],
+      "context_subgenre": "Tamil Dance",
+      "confidence": 0.76,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-telugu",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Telugu"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Telugu",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.55,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-marathi",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Marathi"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Marathi",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.55,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-gujarati",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Gujarati"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Gujarati",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.55,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "genre-rajasthani",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Rajasthani"],
+      "normalized_primary_genre": "Indian",
+      "normalized_subgenre": "Rajasthani",
+      "dj_use_tags": ["indian"],
+      "confidence": 0.55,
+      "review_status": "needs_review"
     },
     {
       "id": "filename-bollywood",

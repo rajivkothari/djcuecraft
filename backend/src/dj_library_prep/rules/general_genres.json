@@ -1,12 +1,57 @@
 {
   "rules": [
     {
+      "id": "genre-hip-hop-club-rap",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["hip-hop", "hip hop", "rap"],
+      "normalized_primary_genre": "Hip-Hop",
+      "normalized_subgenre": "Club Rap",
+      "requires_context": ["club", "party", "anthem", "dance floor"],
+      "context_subgenre": "Club Rap",
+      "confidence": 0.93,
+      "review_status": "pending"
+    },
+    {
       "id": "genre-hip-hop",
       "field": "genre",
       "match_type": "exact",
       "values": ["Hip-Hop/Rap", "Hip-Hop", "Hip Hop", "Rap"],
       "normalized_primary_genre": "Hip-Hop",
+      "normalized_subgenre": "Pop Rap",
       "confidence": 0.92,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-hip-hop-trap",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["trap"],
+      "normalized_primary_genre": "Hip-Hop",
+      "normalized_subgenre": "Trap",
+      "confidence": 0.80,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-hip-hop-boom-bap",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["boom bap"],
+      "normalized_primary_genre": "Hip-Hop",
+      "normalized_subgenre": "Boom Bap",
+      "confidence": 0.78,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-r-and-b-soul",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["R&B/Soul", "R&B", "Soul"],
+      "normalized_primary_genre": "R&B",
+      "normalized_subgenre": "Soul",
+      "requires_context": ["soul"],
+      "context_subgenre": "Soul",
+      "confidence": 0.91,
       "review_status": "pending"
     },
     {
@@ -15,7 +60,28 @@
       "match_type": "exact",
       "values": ["R&B/Soul", "R&B", "Soul"],
       "normalized_primary_genre": "R&B",
-      "confidence": 0.9,
+      "normalized_subgenre": "Contemporary R&B",
+      "confidence": 0.90,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-r-and-b-funk",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["funk"],
+      "normalized_primary_genre": "R&B",
+      "normalized_subgenre": "Funk",
+      "confidence": 0.82,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-r-and-b-new-jack-swing",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["new jack swing"],
+      "normalized_primary_genre": "R&B",
+      "normalized_subgenre": "New Jack Swing",
+      "confidence": 0.82,
       "review_status": "pending"
     },
     {
@@ -34,6 +100,122 @@
       "values": ["Funk"],
       "normalized_primary_genre": "Funk",
       "confidence": 0.92,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-pop-dance-pop-exact",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Dance Pop", "Electropop"],
+      "normalized_primary_genre": "Pop",
+      "normalized_subgenre": "Dance Pop",
+      "confidence": 0.82,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-pop-dance-context",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Pop"],
+      "normalized_primary_genre": "Pop",
+      "normalized_subgenre": "Dance Pop",
+      "requires_context": ["dance", "club", "remix", "edit"],
+      "context_subgenre": "Dance Pop",
+      "confidence": 0.80,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-pop",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Pop"],
+      "normalized_primary_genre": "Pop",
+      "normalized_subgenre": "Pop",
+      "confidence": 0.76,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-house",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["House"],
+      "normalized_primary_genre": "Dance",
+      "normalized_subgenre": "House",
+      "confidence": 0.80,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-edm",
+      "field": "genre",
+      "match_type": "contains",
+      "values": ["EDM", "Electronic"],
+      "normalized_primary_genre": "Dance",
+      "normalized_subgenre": "EDM",
+      "confidence": 0.76,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-freestyle-latin",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Freestyle"],
+      "normalized_primary_genre": "Freestyle",
+      "normalized_subgenre": "Latin Freestyle",
+      "requires_context": ["latin"],
+      "context_subgenre": "Latin Freestyle",
+      "confidence": 0.80,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-freestyle",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Freestyle"],
+      "normalized_primary_genre": "Freestyle",
+      "normalized_subgenre": "Club Freestyle",
+      "confidence": 0.70,
+      "review_status": "needs_review"
+    },
+    {
+      "id": "keyword-latin-freestyle",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["latin freestyle"],
+      "normalized_primary_genre": "Freestyle",
+      "normalized_subgenre": "Latin Freestyle",
+      "confidence": 0.78,
+      "review_status": "pending"
+    },
+    {
+      "id": "keyword-freestyle-latin-context",
+      "field": "keyword",
+      "match_type": "contains",
+      "values": ["freestyle"],
+      "normalized_primary_genre": "Freestyle",
+      "normalized_subgenre": "Latin Freestyle",
+      "requires_context": ["latin"],
+      "context_subgenre": "Latin Freestyle",
+      "confidence": 0.76,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-country",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Country"],
+      "normalized_primary_genre": "Country",
+      "normalized_subgenre": "Country",
+      "confidence": 0.84,
+      "review_status": "pending"
+    },
+    {
+      "id": "genre-country-rock",
+      "field": "genre",
+      "match_type": "exact",
+      "values": ["Country Rock"],
+      "normalized_primary_genre": "Country",
+      "normalized_subgenre": "Country Rock",
+      "confidence": 0.82,
       "review_status": "pending"
     },
     {
