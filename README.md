@@ -95,11 +95,13 @@ python -m dj_library_prep.cli analyze-beats "samples/test_music"
 python -m dj_library_prep.cli export-cues-csv --output exports/cue_points.csv
 ```
 
-Beat analysis stores beat timestamps separately from track metadata and proposes cue points for Intro, 8 Beats In, 16 Beats In, 32 Beats In, and 64 Beats In. Cue points include `cue_confidence` and `review_status`. Nothing is written to audio files or DJ software libraries.
+Beat analysis stores beat timestamps separately from track metadata and proposes cue points. The default `performance` preset places beat-indexed cues at Intro, 8 Beats In, 32 Beats In, 64 Beats In, and 128 Beats In, plus time-fraction tail cues at Breakdown (40%), Build (70%), and Outro (88%) of the track's full duration. Cue points include `cue_confidence` and `review_status`. Nothing is written to audio files or DJ software libraries.
 
 Auto-cue setup can use a preset or custom cue template:
 
 ```powershell
+python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue-preset performance
+python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue-preset minimix
 python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue-preset phrase
 python -m dj_library_prep.cli analyze-beats "samples/test_music" --cue "Load=0" --cue "Drop Prep=32"
 ```

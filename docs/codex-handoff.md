@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 87 tests pass.
+All 125 tests pass.
 
 ---
 
@@ -141,6 +141,45 @@ A persistent bottom panel cue editor. Click any track's name cell to load it int
 - The metronome anchor is the first pad with a timestamp; if you later store a true downbeat offset, use it here.
 - `decodeAudioData` covers mp3/wav/m4a everywhere and FLAC in modern Chromium/Firefox. If a user reports a FLAC that won't load, that's a browser codec gap, not a backend bug.
 - The pads were lost-feature parity work — when Codex's original waveform/pad code was overwritten in the merge, this is the committed replacement.
+
+---
+
+---
+
+## `performance` and `minimix` Cue Presets + Time-Fraction Anchors
+
+**Files changed:** `beat_analyzer.py`, `tests/test_beat_analyzer.py`, `README.md`, `docs/beat-cue-analysis.md`
+**Tests added:** 14 new tests in `test_beat_analyzer.py` (125 total)
+
+### What changed
+
+**`CueTemplate` extended:** added `beat_index: int | None = None` (was required `int`) and `time_fraction: float | None = None`. Backward compatible — all existing `CueTemplate("label", N)` calls still work since `beat_index` is positional. Every cue must have at least one anchor type set; `_normalized_cue_template` validates both fields.
+
+**`BeatAnalysisResult` extended:** added `total_duration_seconds: float = 0.0`. Default `0.0` preserves backward compatibility for monkeypatched tests that don't pass this field.
+
+**`detect_beat_timestamps` updated:** calls `librosa.get_duration(path=path)` before the truncated 180-second audio load to capture the full file duration. Stored in `BeatAnalysisResult.total_duration_seconds`.
+
+**`propose_cue_points` updated:** accepts `total_duration_seconds: float | None = None`. For time-fraction cues, resolves `time_fraction * total_duration_seconds` to the nearest beat via `_nearest_beat_index()`. If `total_duration_seconds` is not provided or is `0.0`, time-fraction cues are silently skipped (not an error).
+
+**`_nearest_beat_index()` added:** pure-Python helper — `min(range(len(beats)), key=lambda i: abs(beats[i] - target))`.
+
+**Two new presets:**
+
+| Preset | Beat-indexed cues | Time-fraction cues |
+|--------|------------------|-------------------|
+| `performance` | Intro(0), 8 Beats In(8), 32 Beats In(32), 64 Beats In(64), 128 Beats In(128) | Breakdown(0.40), Build(0.70), Outro(0.88) |
+| `minimix` | Intro(0) | 1/4(0.25), Mid(0.50), 3/4(0.75), Outro Prep(0.85), Outro(0.90), Exit(0.95), End(0.99) |
+
+**`DEFAULT_CUE_PRESET` changed** from `"starter"` to `"performance"`.
+
+**Existing tests updated:** three tests that relied on the `"starter"` default were updated to pass `cue_template=cue_template_for_preset("starter")` explicitly. All previous behavior is preserved.
+
+### Design notes for Codex
+
+- Time-fraction cues and beat-indexed cues can coexist in one preset. The performance preset deliberately places beat-indexed cues in the first half (where exact beat counts matter for DJ cueing) and time-fraction cues in the second half (where the position is better described relative to track length).
+- The `total_duration_seconds=0.0` fallback means no new parameter is required at existing call sites. The only caller that passes a real duration is `analyze_beats_for_folder` and `detect_beat_timestamps`.
+- `librosa.get_duration(path=path)` reads from audio container headers without decoding. It is fast and does not increase peak memory.
+- The `beat_index` field in the emitted cue dict for a time-fraction cue holds the **resolved** beat index (the nearest beat), not `None`. This is consistent with how `beat_index` is used downstream (stored in `cue_points.beat_index`).
 
 ---
 

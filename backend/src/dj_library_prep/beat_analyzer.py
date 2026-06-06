@@ -12,13 +12,14 @@ from dj_library_prep.scanner import scan_audio_files
 
 
 LOW_CUE_CONFIDENCE_THRESHOLD = 0.6
-DEFAULT_CUE_PRESET = "starter"
+DEFAULT_CUE_PRESET = "performance"
 
 
 @dataclass(frozen=True, slots=True)
 class CueTemplate:
     cue_label: str
-    beat_index: int
+    beat_index: int | None = None
+    time_fraction: float | None = None
 
 
 CUE_PRESETS: dict[str, tuple[CueTemplate, ...]] = {
@@ -45,6 +46,26 @@ CUE_PRESETS: dict[str, tuple[CueTemplate, ...]] = {
         CueTemplate("96 Beats In", 96),
         CueTemplate("128 Beats In", 128),
     ),
+    "performance": (
+        CueTemplate("Intro", 0),
+        CueTemplate("8 Beats In", 8),
+        CueTemplate("32 Beats In", 32),
+        CueTemplate("64 Beats In", 64),
+        CueTemplate("128 Beats In", 128),
+        CueTemplate("Breakdown", time_fraction=0.40),
+        CueTemplate("Build", time_fraction=0.70),
+        CueTemplate("Outro", time_fraction=0.88),
+    ),
+    "minimix": (
+        CueTemplate("Intro", 0),
+        CueTemplate("1/4", time_fraction=0.25),
+        CueTemplate("Mid", time_fraction=0.50),
+        CueTemplate("3/4", time_fraction=0.75),
+        CueTemplate("Outro Prep", time_fraction=0.85),
+        CueTemplate("Outro", time_fraction=0.90),
+        CueTemplate("Exit", time_fraction=0.95),
+        CueTemplate("End", time_fraction=0.99),
+    ),
 }
 
 CueTemplateInput = CueTemplate | tuple[str, int]
@@ -61,6 +82,7 @@ CUE_TEMPLATE_HELP = (
 class BeatAnalysisResult:
     beat_timestamps: list[float]
     beat_confidence: float
+    total_duration_seconds: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +121,7 @@ def analyze_beats_for_folder(
                 result.beat_timestamps,
                 result.beat_confidence,
                 cue_template=cue_template,
+                total_duration_seconds=result.total_duration_seconds,
             )
             stored_beats += database.replace_beat_timestamps(
                 connection=connection,
@@ -142,6 +165,7 @@ def detect_beat_timestamps(path: str | Path) -> BeatAnalysisResult:
         ) from exc
 
     try:
+        total_duration_seconds = float(librosa.get_duration(path=path))
         audio, sample_rate = librosa.load(path, mono=True, duration=180)
         onset_envelope = librosa.onset.onset_strength(y=audio, sr=sample_rate)
         _, beat_frames = librosa.beat.beat_track(
@@ -151,12 +175,13 @@ def detect_beat_timestamps(path: str | Path) -> BeatAnalysisResult:
         )
         beat_times = librosa.frames_to_time(beat_frames, sr=sample_rate)
     except Exception:
-        return BeatAnalysisResult(beat_timestamps=[], beat_confidence=0.0)
+        return BeatAnalysisResult(beat_timestamps=[], beat_confidence=0.0, total_duration_seconds=0.0)
 
     confidence = _estimate_beat_confidence(onset_envelope, beat_frames)
     return BeatAnalysisResult(
         beat_timestamps=[round(float(beat_time), 3) for beat_time in beat_times],
         beat_confidence=confidence,
+        total_duration_seconds=total_duration_seconds,
     )
 
 
@@ -164,6 +189,7 @@ def propose_cue_points(
     beat_timestamps: list[float],
     beat_confidence: float,
     cue_template: CueTemplateCollection | None = None,
+    total_duration_seconds: float | None = None,
 ) -> list[dict[str, object]]:
     review_status = (
         ReviewStatus.NEEDS_REVIEW
@@ -172,13 +198,22 @@ def propose_cue_points(
     )
     cue_points: list[dict[str, object]] = []
     for cue_template_item in _normalized_cue_template(cue_template):
-        if cue_template_item.beat_index >= len(beat_timestamps):
-            continue
+        if cue_template_item.time_fraction is not None:
+            if not total_duration_seconds or not beat_timestamps:
+                continue
+            target_time = cue_template_item.time_fraction * total_duration_seconds
+            beat_index = _nearest_beat_index(beat_timestamps, target_time)
+            timestamp = beat_timestamps[beat_index]
+        else:
+            beat_index = cue_template_item.beat_index  # type: ignore[assignment]
+            if beat_index >= len(beat_timestamps):
+                continue
+            timestamp = beat_timestamps[beat_index]
         cue_points.append(
             {
                 "cue_label": cue_template_item.cue_label,
-                "beat_index": cue_template_item.beat_index,
-                "timestamp_seconds": beat_timestamps[cue_template_item.beat_index],
+                "beat_index": beat_index,
+                "timestamp_seconds": timestamp,
                 "cue_confidence": beat_confidence,
                 "review_status": review_status.value,
             }
@@ -230,8 +265,16 @@ def _normalized_cue_template(
 
     labels = set()
     for cue in normalized:
-        if cue.beat_index < 0:
+        if cue.beat_index is None and cue.time_fraction is None:
+            raise ValueError(
+                f"CueTemplate must specify beat_index or time_fraction: {cue.cue_label}"
+            )
+        if cue.beat_index is not None and cue.beat_index < 0:
             raise ValueError(f"Cue beat index cannot be negative: {cue.cue_label}")
+        if cue.time_fraction is not None and not (0.0 <= cue.time_fraction <= 1.0):
+            raise ValueError(
+                f"Cue time_fraction must be between 0.0 and 1.0: {cue.cue_label}"
+            )
         if cue.cue_label in labels:
             raise ValueError(f"Duplicate cue label: {cue.cue_label}")
         labels.add(cue.cue_label)
@@ -243,6 +286,10 @@ def _coerce_cue_template_item(item: CueTemplateInput) -> CueTemplate:
         return item
     label, beat_index = item
     return CueTemplate(str(label), int(beat_index))
+
+
+def _nearest_beat_index(beat_timestamps: list[float], target_time: float) -> int:
+    return min(range(len(beat_timestamps)), key=lambda i: abs(beat_timestamps[i] - target_time))
 
 
 def _estimate_beat_confidence(onset_envelope: Any, beat_frames: Any) -> float:

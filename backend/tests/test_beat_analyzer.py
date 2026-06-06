@@ -3,8 +3,11 @@ import pytest
 from dj_library_prep import beat_analyzer, database
 from dj_library_prep.beat_analyzer import (
     BeatAnalysisResult,
+    CUE_PRESETS,
+    DEFAULT_CUE_PRESET,
     CueTemplate,
     analyze_beats_for_folder,
+    cue_template_for_preset,
     parse_cue_template,
     propose_cue_points,
 )
@@ -14,7 +17,11 @@ from dj_library_prep.models import ReviewStatus, Track
 def test_propose_cue_points_uses_requested_beat_offsets() -> None:
     beat_timestamps = [float(index) for index in range(80)]
 
-    cues = propose_cue_points(beat_timestamps, beat_confidence=0.82)
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.82,
+        cue_template=cue_template_for_preset("starter"),
+    )
 
     assert [cue["cue_label"] for cue in cues] == [
         "Intro",
@@ -30,7 +37,11 @@ def test_propose_cue_points_uses_requested_beat_offsets() -> None:
 def test_propose_cue_points_marks_low_confidence_cues_needs_review() -> None:
     beat_timestamps = [float(index) for index in range(20)]
 
-    cues = propose_cue_points(beat_timestamps, beat_confidence=0.3)
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.3,
+        cue_template=cue_template_for_preset("starter"),
+    )
 
     assert [cue["cue_label"] for cue in cues] == ["Intro", "8 Beats In", "16 Beats In"]
     assert {cue["review_status"] for cue in cues} == {"needs_review"}
@@ -98,7 +109,9 @@ def test_analyze_beats_stores_beats_and_cues_in_sqlite_only(tmp_path, monkeypatc
         ),
     )
 
-    summary = analyze_beats_for_folder(music_dir, db_path)
+    summary = analyze_beats_for_folder(
+        music_dir, db_path, cue_template=cue_template_for_preset("starter")
+    )
 
     assert summary.total_files == 1
     assert summary.analyzed_tracks == 1
@@ -308,3 +321,197 @@ def test_database_initializes_beat_and_cue_tables(tmp_path) -> None:
 
     assert "beat_timestamps" in tables
     assert "cue_points" in tables
+
+
+# --- new tests for time_fraction support and performance/minimix presets ---
+
+
+def test_default_preset_is_performance() -> None:
+    assert DEFAULT_CUE_PRESET == "performance"
+
+
+def test_cue_template_time_fraction_defaults_to_none() -> None:
+    cue = CueTemplate("Intro", 0)
+    assert cue.time_fraction is None
+    assert cue.beat_index == 0
+
+
+def test_cue_template_time_fraction_cue() -> None:
+    cue = CueTemplate("Outro", time_fraction=0.9)
+    assert cue.time_fraction == 0.9
+    assert cue.beat_index is None
+
+
+def test_performance_preset_structure() -> None:
+    preset = CUE_PRESETS["performance"]
+    beat_indexed = [c for c in preset if c.time_fraction is None]
+    time_fractioned = [c for c in preset if c.time_fraction is not None]
+    assert len(beat_indexed) == 5
+    assert len(time_fractioned) == 3
+    labels = [c.cue_label for c in time_fractioned]
+    assert "Breakdown" in labels
+    assert "Build" in labels
+    assert "Outro" in labels
+    for cue in time_fractioned:
+        assert 0.0 <= cue.time_fraction <= 1.0
+
+
+def test_minimix_preset_structure() -> None:
+    preset = CUE_PRESETS["minimix"]
+    assert len(preset) == 8
+    beat_indexed = [c for c in preset if c.time_fraction is None]
+    time_fractioned = [c for c in preset if c.time_fraction is not None]
+    assert len(beat_indexed) == 1
+    assert len(time_fractioned) == 7
+    assert beat_indexed[0].cue_label == "Intro"
+    assert beat_indexed[0].beat_index == 0
+
+
+def test_propose_cue_points_resolves_time_fraction_to_nearest_beat() -> None:
+    # beats at 0, 1, 2, ... 9 seconds; total duration = 10s
+    beat_timestamps = [float(i) for i in range(10)]
+
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.8,
+        cue_template=(CueTemplate("Mid", time_fraction=0.5),),
+        total_duration_seconds=10.0,
+    )
+
+    assert len(cues) == 1
+    assert cues[0]["cue_label"] == "Mid"
+    # 0.5 * 10 = 5.0 → beat index 5, timestamp 5.0
+    assert cues[0]["timestamp_seconds"] == 5.0
+    assert cues[0]["beat_index"] == 5
+
+
+def test_propose_cue_points_skips_time_fraction_without_duration() -> None:
+    beat_timestamps = [float(i) for i in range(20)]
+
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.8,
+        cue_template=(
+            CueTemplate("Intro", 0),
+            CueTemplate("Outro", time_fraction=0.9),
+        ),
+        # total_duration_seconds not provided → Outro skipped
+    )
+
+    assert len(cues) == 1
+    assert cues[0]["cue_label"] == "Intro"
+
+
+def test_propose_cue_points_time_fraction_at_boundaries() -> None:
+    beat_timestamps = [float(i) for i in range(10)]
+
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.8,
+        cue_template=(
+            CueTemplate("Start", time_fraction=0.0),
+            CueTemplate("End", time_fraction=1.0),
+        ),
+        total_duration_seconds=9.0,
+    )
+
+    assert len(cues) == 2
+    # 0.0 * 9 = 0.0 → beat 0
+    assert cues[0]["timestamp_seconds"] == 0.0
+    # 1.0 * 9 = 9.0 → beat 9
+    assert cues[1]["timestamp_seconds"] == 9.0
+
+
+def test_propose_cue_points_time_fraction_snaps_to_nearest_beat() -> None:
+    # beats unevenly spaced: 0, 2, 5, 8, 10
+    beat_timestamps = [0.0, 2.0, 5.0, 8.0, 10.0]
+
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.8,
+        cue_template=(CueTemplate("Near5", time_fraction=0.45),),
+        total_duration_seconds=10.0,
+    )
+
+    # 0.45 * 10 = 4.5; nearest beat is 5.0 at index 2
+    assert cues[0]["timestamp_seconds"] == 5.0
+    assert cues[0]["beat_index"] == 2
+
+
+def test_normalized_cue_template_rejects_invalid_time_fraction() -> None:
+    with pytest.raises(ValueError, match="time_fraction must be between"):
+        propose_cue_points(
+            [0.0],
+            beat_confidence=0.8,
+            cue_template=(CueTemplate("Bad", time_fraction=1.1),),
+        )
+
+    with pytest.raises(ValueError, match="time_fraction must be between"):
+        propose_cue_points(
+            [0.0],
+            beat_confidence=0.8,
+            cue_template=(CueTemplate("Bad", time_fraction=-0.1),),
+        )
+
+
+def test_normalized_cue_template_rejects_missing_anchor() -> None:
+    with pytest.raises(ValueError, match="beat_index or time_fraction"):
+        propose_cue_points(
+            [0.0],
+            beat_confidence=0.8,
+            cue_template=(CueTemplate("Ghost"),),
+        )
+
+
+def test_beat_analysis_result_includes_total_duration() -> None:
+    result = BeatAnalysisResult(
+        beat_timestamps=[0.0, 0.5, 1.0],
+        beat_confidence=0.9,
+        total_duration_seconds=180.0,
+    )
+    assert result.total_duration_seconds == 180.0
+
+
+def test_propose_cue_points_performance_preset_with_duration() -> None:
+    # 200 beats at 0.5s each → 100s of beats, total duration 200s
+    beat_timestamps = [round(i * 0.5, 3) for i in range(200)]
+
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.9,
+        cue_template=cue_template_for_preset("performance"),
+        total_duration_seconds=200.0,
+    )
+
+    labels = [c["cue_label"] for c in cues]
+    # All 5 beat-indexed cues fit (beats 0,8,32,64,128 all < 200)
+    assert "Intro" in labels
+    assert "8 Beats In" in labels
+    assert "32 Beats In" in labels
+    assert "64 Beats In" in labels
+    assert "128 Beats In" in labels
+    # All 3 time-fraction cues resolve
+    assert "Breakdown" in labels
+    assert "Build" in labels
+    assert "Outro" in labels
+    assert len(cues) == 8
+
+
+def test_propose_cue_points_minimix_preset_with_duration() -> None:
+    # 100 beats at 1s each → total duration 200s
+    beat_timestamps = [float(i) for i in range(100)]
+
+    cues = propose_cue_points(
+        beat_timestamps,
+        beat_confidence=0.85,
+        cue_template=cue_template_for_preset("minimix"),
+        total_duration_seconds=200.0,
+    )
+
+    labels = [c["cue_label"] for c in cues]
+    assert labels[0] == "Intro"
+    assert "1/4" in labels
+    assert "Mid" in labels
+    assert "3/4" in labels
+    # All 8 minimix cues should be present (beat 0 is in range + 7 time-fraction)
+    assert len(cues) == 8
