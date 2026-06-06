@@ -1,21 +1,48 @@
 :root {
-  color-scheme: light;
-  --bg: #f4f6f8;
-  --panel: #ffffff;
-  --line: #d8dee7;
-  --text: #17202a;
-  --muted: #5f6b7a;
-  --accent: #0f766e;
-  --danger: #a33a3a;
-  --focus: #2563eb;
-  --waveform-low: #e74c3c;
-  --waveform-mid: #2ecc71;
-  --waveform-high: #3498db;
-  --waveform-bg: #1a1a2e;
+  color-scheme: dark;
+
+  /* Core backgrounds */
+  --bg: #0d0d12;
+  --bg-raised: #16161f;
+  --bg-surface: #1e1e2a;
+  --bg-hover: #262635;
+
+  /* Accent — hot pink */
+  --accent: #e91e8c;
+  --accent-hover: #f43fa5;
+  --accent-muted: rgba(233, 30, 140, 0.15);
+  --accent-glow: rgba(233, 30, 140, 0.25);
+
+  /* Text hierarchy */
+  --text: #f0f0f5;
+  --text-secondary: #9d9db5;
+  --text-muted: #6b6b85;
+  --text-on-accent: #ffffff;
+
+  /* Borders */
+  --line: #2a2a3a;
+  --line-strong: #3a3a4d;
+
+  /* Semantic */
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #60a5fa;
+
+  /* Focus and selection */
+  --focus: #e91e8c;
+  --selected-row: rgba(233, 30, 140, 0.08);
+
+  /* Waveform */
+  --waveform-bg: #0a0a10;
+  --waveform-low: #e91e8c;
+  --waveform-mid: #f43fa5;
+  --waveform-high: #f9a8d4;
+  --waveform-wave: #e91e8c;
   --waveform-playhead: #ffffff;
   --waveform-beat: rgba(255, 255, 255, 0.25);
   --waveform-bar: rgba(255, 255, 255, 0.5);
-  --waveform-cue: #e74c3c;
+  --waveform-cue: #f87171;
   --waveform-zoom-region: rgba(255, 255, 255, 0.08);
 }
 
@@ -27,13 +54,28 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .topbar {
   align-items: center;
-  background: var(--panel);
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--line);
   display: flex;
   gap: 24px;
@@ -42,14 +84,42 @@ body {
   padding: 14px 18px;
 }
 
+.topbar > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.titleAccent {
+  width: 3px;
+  height: 36px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.titleGroup {
+  display: grid;
+  gap: 2px;
+}
+
 h1 {
-  font-size: 20px;
-  font-weight: 650;
-  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.brandTag {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
 }
 
 p {
-  color: var(--muted);
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -60,7 +130,7 @@ p {
 }
 
 label {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: grid;
   gap: 4px;
   font-size: 12px;
@@ -72,36 +142,50 @@ input,
 select,
 textarea {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   font: inherit;
-  min-height: 32px;
+  min-height: 34px;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
 }
 
 button {
   background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  border-color: transparent;
+  color: var(--text-on-accent);
   cursor: pointer;
-  font-weight: 650;
-  padding: 0 12px;
+  font-weight: 600;
+  padding: 0 16px;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .secondaryButton {
-  background: #fff;
+  background: var(--bg-surface);
   border-color: var(--line);
   color: var(--text);
   margin-top: 6px;
 }
 
+.secondaryButton:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--line-strong);
+}
+
 button:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
 input,
 select,
 textarea {
-  background: #fff;
+  background: var(--bg-surface);
   color: var(--text);
   padding: 5px 8px;
 }
@@ -110,14 +194,16 @@ input:focus,
 select:focus,
 textarea:focus,
 button:focus {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-glow);
+  border-color: var(--accent);
 }
 
 main {
   display: grid;
   gap: 14px;
   padding: 14px;
+  padding-bottom: 52vh;
 }
 
 textarea {
@@ -126,9 +212,9 @@ textarea {
 }
 
 .toolPanel {
-  background: var(--panel);
+  background: var(--bg-raised);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   display: grid;
   gap: 12px;
   padding: 12px;
@@ -143,7 +229,7 @@ textarea {
 
 h2 {
   font-size: 16px;
-  font-weight: 650;
+  font-weight: 700;
   margin: 0 0 4px;
 }
 
@@ -164,9 +250,9 @@ h2 {
 }
 
 .tableShell {
-  background: var(--panel);
+  background: var(--bg-raised);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: auto;
 }
 
@@ -179,22 +265,24 @@ table {
 th,
 td {
   border-bottom: 1px solid var(--line);
-  padding: 10px;
+  padding: 10px 12px;
   text-align: left;
   vertical-align: top;
 }
 
 th {
-  background: #eef2f5;
-  color: #334155;
-  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   position: sticky;
   text-transform: uppercase;
   top: 0;
   z-index: 1;
+  border-bottom-color: var(--line-strong);
 }
 
-/* Collapsed track table: caret | Track | Artist/Title | Confidence | Status */
 th.caretCol,
 td.caretCol { width: 34px; padding-left: 12px; padding-right: 0; }
 thead th:nth-child(2) { width: 34%; }
@@ -203,13 +291,13 @@ thead th:nth-child(4) { width: 110px; }
 thead th:nth-child(5) { width: 130px; }
 
 .hint {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 13px;
   margin: 0 2px 4px;
 }
 
 .caret {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -218,7 +306,7 @@ thead th:nth-child(5) { width: 130px; }
 }
 
 .detailRow > td {
-  background: #f7fafc;
+  background: var(--bg-surface);
   padding: 14px 16px;
 }
 
@@ -229,6 +317,7 @@ thead th:nth-child(5) { width: 130px; }
 }
 
 .detailBlock h3 {
+  color: var(--text-secondary);
   font-size: 12px;
   letter-spacing: 0.04em;
   margin: 0 0 8px;
@@ -240,19 +329,21 @@ thead th:nth-child(5) { width: 130px; }
 }
 
 .statusBadge {
-  border-radius: 999px;
+  border-radius: 12px;
   display: inline-block;
-  font-size: 12px;
-  font-weight: 650;
-  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 3px 10px;
+  text-transform: uppercase;
 }
 
-.status-approved { background: #d8efe6; color: #0f5132; }
-.status-edited { background: #d8e7ef; color: #0c4a6e; }
-.status-pending { background: #eef2f5; color: #475569; }
-.status-needs_review { background: #fde8e8; color: #a33a3a; }
-.status-rejected { background: #f1d6d6; color: #7f1d1d; }
-.status-skipped { background: #eceff2; color: #64748b; }
+.status-approved { background: rgba(52, 211, 153, 0.15); color: var(--success); }
+.status-edited { background: var(--accent-muted); color: var(--accent); }
+.status-pending { background: rgba(96, 165, 250, 0.15); color: var(--info); }
+.status-needs_review { background: rgba(251, 191, 36, 0.15); color: var(--warning); }
+.status-rejected { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
+.status-skipped { background: transparent; color: var(--text-muted); }
 
 .trackCell strong,
 .trackCell span {
@@ -260,8 +351,12 @@ thead th:nth-child(5) { width: 130px; }
   overflow-wrap: anywhere;
 }
 
+.trackCell strong {
+  font-weight: 600;
+}
+
 .trackCell span {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 12px;
   margin-top: 5px;
 }
@@ -283,9 +378,9 @@ thead th:nth-child(5) { width: 130px; }
 }
 
 dt {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 dd {
@@ -301,6 +396,12 @@ dd {
 
 .editGrid label {
   min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.editGrid input {
+  background: var(--bg);
 }
 
 .warnings {
@@ -310,30 +411,34 @@ dd {
 }
 
 .suggestionBox {
-  border-bottom: 1px solid var(--line);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   display: grid;
   gap: 6px;
   margin-bottom: 10px;
-  padding-bottom: 10px;
+  padding: 10px 12px;
 }
 
 .suggestionBox strong {
   overflow-wrap: anywhere;
+  font-weight: 600;
 }
 
 .suggestionBox p {
+  color: var(--text-muted);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .reviewFlag {
-  color: var(--accent);
+  color: var(--success);
   font-size: 12px;
   font-weight: 650;
 }
 
 .warningFlag {
-  color: var(--danger);
+  color: var(--warning);
 }
 
 .actionCell {
@@ -345,8 +450,14 @@ dd {
   margin-top: 0;
 }
 
+.actionCell button[data-action="reject"]:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--bg-surface);
+}
+
 .rowState {
-  color: var(--muted);
+  color: var(--text-muted);
   display: block;
   font-size: 12px;
   margin-top: 6px;
@@ -354,7 +465,8 @@ dd {
 }
 
 .historyPanel {
-  color: var(--muted);
+  background: var(--bg);
+  color: var(--text-muted);
   font-size: 12px;
   margin-top: 8px;
 }
@@ -362,6 +474,7 @@ dd {
 .historyItem {
   border-top: 1px solid var(--line);
   padding: 6px 0;
+  color: var(--text-secondary);
 }
 
 .folderInputRow {
@@ -414,21 +527,22 @@ dd {
 
 .selectableRow {
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .selectableRow:hover {
-  background: #eef6f4;
+  background: var(--bg-hover);
 }
 
 .trackCell.selectable::after {
-  color: var(--muted);
+  color: var(--text-muted);
   content: " \23CF click to open in editor";
   font-size: 11px;
   font-weight: 500;
 }
 
 .selectedRow {
-  background: #e6f2f0;
+  background: var(--selected-row);
 }
 
 .selectedRow td:first-child {
@@ -436,15 +550,12 @@ dd {
 }
 
 /* Cue editor — persistent bottom panel */
-main {
-  padding-bottom: 52vh;
-}
 
 .cueEditor {
-  background: var(--panel);
+  background: var(--bg);
   border-top: 2px solid var(--accent);
   bottom: 0;
-  box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5);
   display: grid;
   gap: 10px;
   left: 0;
@@ -458,10 +569,13 @@ main {
 
 .editorBar {
   align-items: center;
+  background: var(--bg-raised);
+  border-radius: 8px;
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
+  padding: 8px 12px;
 }
 
 .editorTrackInfo {
@@ -471,11 +585,12 @@ main {
 
 .editorTrackInfo strong {
   font-size: 15px;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .editorTrackInfo span {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -487,21 +602,21 @@ main {
 }
 
 .editorTime {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   min-width: 96px;
 }
 
 .editorBpm {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .metronomeToggle {
   align-items: center;
-  color: var(--text);
+  color: var(--text-secondary);
   display: flex;
   flex-direction: row;
   gap: 6px;
@@ -513,7 +628,7 @@ main {
 
 .volumeControl {
   align-items: center;
-  color: var(--muted);
+  color: var(--text-muted);
   display: flex;
   font-size: 12px;
   font-weight: 600;
@@ -524,11 +639,12 @@ main {
   border: none;
   min-height: auto;
   width: 60px;
+  background: transparent;
 }
 
 .zoomControl {
   align-items: center;
-  color: var(--muted);
+  color: var(--text-muted);
   display: flex;
   font-size: 12px;
   font-weight: 600;
@@ -539,12 +655,13 @@ main {
   border: none;
   min-height: auto;
   width: 80px;
+  background: transparent;
 }
 
 .waveformOverview {
   background: var(--waveform-bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   display: block;
   height: 80px;
@@ -554,7 +671,7 @@ main {
 .waveformDetail {
   background: var(--waveform-bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: crosshair;
   display: block;
   height: 120px;
@@ -564,11 +681,27 @@ main {
 .padBar {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
+.padPresetLabel {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.padPresetLabel select {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 2px 6px;
+}
+
 .padState {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -579,11 +712,12 @@ main {
 }
 
 .pad {
+  background: var(--bg-surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   display: grid;
   gap: 6px;
-  padding: 8px;
+  padding: 10px;
 }
 
 .pad.padManual {
@@ -591,7 +725,8 @@ main {
 }
 
 .pad.padEmpty {
-  opacity: 0.7;
+  opacity: 0.5;
+  border-style: dashed;
 }
 
 .padTop {
@@ -602,7 +737,7 @@ main {
 }
 
 .padLabel {
-  font-weight: 650;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
@@ -613,7 +748,7 @@ main {
 }
 
 .padRename {
-  background: #fff;
+  background: var(--bg-surface);
   border-color: var(--line);
   color: var(--text);
   flex-shrink: 0;
@@ -623,7 +758,7 @@ main {
 }
 
 .padTime {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -666,5 +801,13 @@ main {
   main {
     padding: 8px;
     padding-bottom: 60vh;
+  }
+
+  .padGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cueEditor {
+    max-height: 60vh;
   }
 }
