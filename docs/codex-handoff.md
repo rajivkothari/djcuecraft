@@ -6,6 +6,43 @@ All 184 tests pass.
 
 ---
 
+## Fix Session — Frontend Audio + Beat Grid (post-Session 7)
+
+### Problem 1 — CUE_PRESETS bar-based labels (backend)
+
+All four presets in `beat_analyzer.py` updated to use bar-based labels (1 bar = 4 beats):
+- **starter**: Start/2 Bars/4 Bars/8 Bars/16 Bars (beat_indexes 0/8/16/32/64)
+- **phrase**: Start/Phrase 1–4 (beat_indexes 0/32/64/96/128)
+- **extended**: Start/2 Bars/4 Bars/8 Bars/16 Bars/24 Bars/32 Bars (beat_indexes 0/8/16/32/64/96/128)
+- **performance**: Start/8 Bars/16 Bars/32 Bars (beat_indexes 0/32/64/128) + Chorus 2/Breakdown/Last Chorus/Outro (time_fractions 0.55/0.68/0.80/0.92)
+
+6 tests in `test_beat_analyzer.py` and 4 tests in `test_pads.py` updated to match new labels. All 184 tests pass.
+
+### Problem 2 — Beat grid labels (frontend)
+
+`renderBeatGrid()` in `app.js`: removed individual beat-number text between bar lines. Bar lines now show just the bar number ("1", "2", …) — no "Bar N" prefix. Font is 12px when zoomBeats ≤ 8, 11px otherwise. Overview canvas still suppresses all labels (`showLabels=false`).
+
+### Problem 3 — Metronome no sound (frontend)
+
+- `togglePlay()` made `async`; `await ctx.resume()` before scheduling playback.
+- `startPlaybackFrom()` removed redundant `ctx.resume()` (already done by `togglePlay`).
+- `clickAt()` rewritten: square wave at 1000 Hz, gain starts at 0.5 and decays exponentially to 0.001 over 0.08s, oscillator stops at 0.09s, routed through `metronomeGainNode`.
+- `metronomeAnchor()` converted from `Array.find` to explicit for-loop to guard against edge cases.
+
+### Problem 4 — Independent track/metronome volume (frontend)
+
+- `gainNode` split into `trackGainNode` and `metronomeGainNode`.
+- `getAudioContext()` creates both GainNodes with initial values from their sliders.
+- `sourceNode` connects to `trackGainNode`; oscillator in `clickAt` connects to `metronomeGainNode`.
+- `index.html`: replaced single `#volumeRange` with `#trackVolume` (value=100) and `#metronomeVolume` (value=80).
+- `app.js`: wired both sliders to their respective GainNodes.
+
+### Problem 5 — setPadFromPlayhead silent fail (frontend)
+
+`setPadFromPlayhead()` now captures position before the async `savePad()` call and guards against NaN/negative values before writing.
+
+---
+
 ## Session 7 Summary
 
 ### Part A — Fix DJ Utility Tag False Positives (P1-4)

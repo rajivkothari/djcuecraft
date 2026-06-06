@@ -24,11 +24,11 @@ def test_propose_cue_points_uses_requested_beat_offsets() -> None:
     )
 
     assert [cue["cue_label"] for cue in cues] == [
-        "Intro",
-        "8 Beats In",
-        "16 Beats In",
-        "32 Beats In",
-        "64 Beats In",
+        "Start",
+        "2 Bars",
+        "4 Bars",
+        "8 Bars",
+        "16 Bars",
     ]
     assert [cue["timestamp_seconds"] for cue in cues] == [0.0, 8.0, 16.0, 32.0, 64.0]
     assert {cue["review_status"] for cue in cues} == {"pending"}
@@ -43,7 +43,7 @@ def test_propose_cue_points_marks_low_confidence_cues_needs_review() -> None:
         cue_template=cue_template_for_preset("starter"),
     )
 
-    assert [cue["cue_label"] for cue in cues] == ["Intro", "8 Beats In", "16 Beats In"]
+    assert [cue["cue_label"] for cue in cues] == ["Start", "2 Bars", "4 Bars"]
     assert {cue["review_status"] for cue in cues} == {"needs_review"}
 
 
@@ -127,11 +127,11 @@ def test_analyze_beats_stores_beats_and_cues_in_sqlite_only(tmp_path, monkeypatc
     assert len(beats) == 70
     assert beats[8]["timestamp_seconds"] == 8.0
     assert [cue["cue_label"] for cue in cues] == [
-        "Intro",
-        "8 Beats In",
-        "16 Beats In",
-        "32 Beats In",
-        "64 Beats In",
+        "Start",
+        "2 Bars",
+        "4 Bars",
+        "8 Bars",
+        "16 Bars",
     ]
     assert cues[0]["cue_confidence"] == 0.76
     assert audio_path.read_bytes() == b"not real audio"
@@ -331,7 +331,7 @@ def test_default_preset_is_performance() -> None:
 
 
 def test_cue_template_time_fraction_defaults_to_none() -> None:
-    cue = CueTemplate("Intro", 0)
+    cue = CueTemplate("Start", 0)
     assert cue.time_fraction is None
     assert cue.beat_index == 0
 
@@ -346,18 +346,22 @@ def test_performance_preset_structure() -> None:
     preset = CUE_PRESETS["performance"]
     beat_indexed = [c for c in preset if c.time_fraction is None]
     time_fractioned = [c for c in preset if c.time_fraction is not None]
-    assert len(beat_indexed) == 5
-    assert len(time_fractioned) == 3
+    assert len(beat_indexed) == 4
+    assert len(time_fractioned) == 4
     beat_labels = [c.cue_label for c in beat_indexed]
-    assert "Intro" in beat_labels
-    assert "8 Beats In" in beat_labels
-    assert "16 Beats In" in beat_labels
-    assert "32 Beats In" in beat_labels
-    assert "64 Beats In" in beat_labels
+    assert "Start" in beat_labels
+    assert "8 Bars" in beat_labels
+    assert "16 Bars" in beat_labels
+    assert "32 Bars" in beat_labels
+    beat_indexes = [c.beat_index for c in beat_indexed]
+    assert beat_indexes == [0, 32, 64, 128]
     frac_labels = [c.cue_label for c in time_fractioned]
-    assert "Mid" in frac_labels
+    assert "Chorus 2" in frac_labels
+    assert "Breakdown" in frac_labels
     assert "Last Chorus" in frac_labels
     assert "Outro" in frac_labels
+    frac_values = [c.time_fraction for c in time_fractioned]
+    assert frac_values == [0.55, 0.68, 0.80, 0.92]
     for cue in time_fractioned:
         assert 0.0 <= cue.time_fraction <= 1.0
 
@@ -398,14 +402,14 @@ def test_propose_cue_points_skips_time_fraction_without_duration() -> None:
         beat_timestamps,
         beat_confidence=0.8,
         cue_template=(
-            CueTemplate("Intro", 0),
+            CueTemplate("Start", 0),
             CueTemplate("Outro", time_fraction=0.9),
         ),
         # total_duration_seconds not provided → Outro skipped
     )
 
     assert len(cues) == 1
-    assert cues[0]["cue_label"] == "Intro"
+    assert cues[0]["cue_label"] == "Start"
 
 
 def test_propose_cue_points_time_fraction_at_boundaries() -> None:
@@ -490,14 +494,14 @@ def test_propose_cue_points_performance_preset_with_duration() -> None:
     )
 
     labels = [c["cue_label"] for c in cues]
-    # All 5 beat-indexed cues fit (beats 0,8,16,32,64 all < 200)
-    assert "Intro" in labels
-    assert "8 Beats In" in labels
-    assert "16 Beats In" in labels
-    assert "32 Beats In" in labels
-    assert "64 Beats In" in labels
-    # All 3 time-fraction cues resolve
-    assert "Mid" in labels
+    # All 4 beat-indexed cues fit (beats 0, 32, 64, 128 all < 200)
+    assert "Start" in labels
+    assert "8 Bars" in labels
+    assert "16 Bars" in labels
+    assert "32 Bars" in labels
+    # All 4 time-fraction cues resolve
+    assert "Chorus 2" in labels
+    assert "Breakdown" in labels
     assert "Last Chorus" in labels
     assert "Outro" in labels
     assert len(cues) == 8

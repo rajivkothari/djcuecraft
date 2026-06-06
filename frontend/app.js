@@ -15,7 +15,8 @@ const editorTime = document.querySelector("#editorTime");
 const playButton = document.querySelector("#playButton");
 const stopButton = document.querySelector("#stopButton");
 const metronomeToggle = document.querySelector("#metronomeToggle");
-const volumeRange = document.querySelector("#volumeRange");
+const trackVolume = document.querySelector("#trackVolume");
+const metronomeVolume = document.querySelector("#metronomeVolume");
 const zoomRange = document.querySelector("#zoomRange");
 const overviewCanvas = document.querySelector("#waveformOverview");
 const detailCanvas = document.querySelector("#waveformDetail");
@@ -382,7 +383,8 @@ async function responseErrorMessage(response, fallback) {
  * ------------------------------------------------------------------------ */
 
 let audioCtx = null;
-let gainNode = null;
+let trackGainNode = null;
+let metronomeGainNode = null;
 let audioBuffer = null;
 let sourceNode = null;
 let isPlaying = false;
@@ -409,8 +411,11 @@ stopButton.addEventListener("click", stopPlayback);
 analyzeBeatsButton.addEventListener("click", analyzeTrackBeats);
 autoFillPadsButton.addEventListener("click", autoFillPads);
 clearAllPadsButton.addEventListener("click", clearAllPads);
-volumeRange.addEventListener("input", () => {
-  if (gainNode) gainNode.gain.value = volumeRange.value / 100;
+trackVolume.addEventListener("input", () => {
+  if (trackGainNode) trackGainNode.gain.value = trackVolume.value / 100;
+});
+metronomeVolume.addEventListener("input", () => {
+  if (metronomeGainNode) metronomeGainNode.gain.value = metronomeVolume.value / 100;
 });
 zoomRange.addEventListener("input", () => {
   zoomBeats = Number(zoomRange.value);
@@ -452,9 +457,12 @@ window.addEventListener("resize", () => {
 function getAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    gainNode = audioCtx.createGain();
-    gainNode.gain.value = volumeRange.value / 100;
-    gainNode.connect(audioCtx.destination);
+    trackGainNode = audioCtx.createGain();
+    trackGainNode.gain.value = trackVolume.value / 100;
+    trackGainNode.connect(audioCtx.destination);
+    metronomeGainNode = audioCtx.createGain();
+    metronomeGainNode.gain.value = metronomeVolume.value / 100;
+    metronomeGainNode.connect(audioCtx.destination);
   }
   return audioCtx;
 }
@@ -554,11 +562,13 @@ function drawCanvasMessage(canvas, cssHeight, msg) {
   }
 }
 
-function togglePlay() {
+async function togglePlay() {
   if (!audioBuffer) return;
   if (isPlaying) {
     pause();
   } else {
+    const ctx = getAudioContext();
+    if (ctx.state === "suspended") await ctx.resume();
     startPlaybackFrom(playStartOffset >= duration ? 0 : playStartOffset);
   }
 }
@@ -566,11 +576,10 @@ function togglePlay() {
 function startPlaybackFrom(offset) {
   if (!audioBuffer) return;
   const ctx = getAudioContext();
-  if (ctx.state === "suspended") ctx.resume();
   stopSource();
   sourceNode = ctx.createBufferSource();
   sourceNode.buffer = audioBuffer;
-  sourceNode.connect(gainNode);
+  sourceNode.connect(trackGainNode);
   sourceNode.onended = handleSourceEnded;
   playStartOffset = Math.max(0, Math.min(offset, duration));
   playStartCtxTime = ctx.currentTime;
@@ -672,8 +681,10 @@ function updateTime() {
 /* ---- Metronome ---- */
 
 function metronomeAnchor() {
-  const first = padsData.find((pad) => pad.timestamp_seconds != null);
-  return first ? first.timestamp_seconds : 0;
+  for (const pad of padsData) {
+    if (pad.timestamp_seconds != null) return pad.timestamp_seconds;
+  }
+  return 0;
 }
 
 function resetMetronome() {
@@ -717,12 +728,11 @@ function clickAt(ctx, when) {
   const clickGain = ctx.createGain();
   osc.type = "square";
   osc.frequency.value = 1000;
-  clickGain.gain.setValueAtTime(0.0001, when);
-  clickGain.gain.exponentialRampToValueAtTime(1.0, when + 0.001);
-  clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.04);
-  osc.connect(clickGain).connect(ctx.destination);
+  clickGain.gain.setValueAtTime(0.5, when);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, when + 0.08);
+  osc.connect(clickGain).connect(metronomeGainNode);
   osc.start(when);
-  osc.stop(when + 0.05);
+  osc.stop(when + 0.09);
 }
 
 /* ---- Frequency Analysis (IIR filter bands via Web Worker) ---- */
@@ -1002,18 +1012,11 @@ function renderBeatGrid(ctx, width, height, startTime, endTime, showLabels) {
     ctx.fillStyle = isBar ? barColor : beatColor;
     ctx.fillRect(x, 0, isBar ? 1.5 : 0.5, height);
 
-    if (showLabels) {
-      const beatInBar = (i % 4) + 1;
+    if (showLabels && isBar) {
       const barNum = Math.floor(i / 4) + 1;
-      if (isBar) {
-        ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.font = "11px monospace";
-        ctx.fillText(`Bar ${barNum}`, x + 3, 12);
-      } else if (zoomBeats <= 16) {
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.font = "9px monospace";
-        ctx.fillText(String(beatInBar), x + 2, 12);
-      }
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.font = `${zoomBeats <= 8 ? 12 : 11}px monospace`;
+      ctx.fillText(String(barNum), x + 3, 12);
     }
   }
 }
@@ -1072,7 +1075,9 @@ function renderPads() {
 
 async function setPadFromPlayhead(index) {
   if (!selectedTrack) return;
-  await savePad(index, { timestamp_seconds: Number(currentPosition().toFixed(3)) });
+  const position = Number(currentPosition().toFixed(3));
+  if (Number.isNaN(position) || position < 0) return;
+  await savePad(index, { timestamp_seconds: position });
 }
 
 function renamePad(el, pad) {

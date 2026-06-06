@@ -169,14 +169,14 @@ def test_autofill_with_preset_places_beat_indexed_cues(tmp_path) -> None:
         database_path=db_path,
     )
 
-    # starter preset: Intro(0), 8 Beats In(8), 16 Beats In(16), 32 Beats In(32), 64 Beats In(64)
-    assert pad_slots[0]["label"] == "Intro"
+    # starter preset: Start(0), 2 Bars(8), 4 Bars(16), 8 Bars(32), 16 Bars(64)
+    assert pad_slots[0]["label"] == "Start"
     assert pad_slots[0]["timestamp_seconds"] == 0.0
-    assert pad_slots[1]["label"] == "8 Beats In"
+    assert pad_slots[1]["label"] == "2 Bars"
     assert pad_slots[1]["timestamp_seconds"] == 4.0  # beat 8 * 0.5s
-    assert pad_slots[2]["label"] == "16 Beats In"
-    assert pad_slots[3]["label"] == "32 Beats In"
-    assert pad_slots[4]["label"] == "64 Beats In"
+    assert pad_slots[2]["label"] == "4 Bars"
+    assert pad_slots[3]["label"] == "8 Bars"
+    assert pad_slots[4]["label"] == "16 Bars"
     # slots 5-7 are empty (starter has only 5 cues)
     assert pad_slots[5]["timestamp_seconds"] is None
 
@@ -195,16 +195,16 @@ def test_autofill_with_preset_resolves_time_fraction_cues(tmp_path) -> None:
     )
 
     # performance preset has 8 cues; all 300 beats cover the first 150s
-    # beat-indexed cues (0,8,16,32,64) all resolve; time-fraction cues
-    # (Mid 0.55, Last Chorus 0.75, Outro 0.90) resolve to nearest beat
-    assert pad_slots[0]["label"] == "Intro"
+    # beat-indexed cues (0,32,64,128) all resolve; time-fraction cues
+    # (Chorus 2 0.55, Breakdown 0.68, Last Chorus 0.80, Outro 0.92) resolve to nearest beat
+    assert pad_slots[0]["label"] == "Start"
     assert pad_slots[0]["timestamp_seconds"] == 0.0
 
-    # Mid at 55% of 200s = 110s → nearest beat at 110.0s (beat index 220)
-    mid = next(p for p in pad_slots if p["label"] == "Mid")
-    assert mid["timestamp_seconds"] == pytest.approx(110.0, abs=0.6)
+    # Chorus 2 at 55% of 200s = 110s → nearest beat at 110.0s
+    chorus2 = next(p for p in pad_slots if p["label"] == "Chorus 2")
+    assert chorus2["timestamp_seconds"] == pytest.approx(110.0, abs=0.6)
 
-    # Outro at 90% of 200s = 180s; last beat is 149.5s → snaps to beat end
+    # Outro at 92% of 200s = 184s; last beat is 149.5s → snaps to beat end
     outro = next(p for p in pad_slots if p["label"] == "Outro")
     assert outro["timestamp_seconds"] == pytest.approx(149.5, abs=0.6)
 
@@ -223,11 +223,11 @@ def test_autofill_with_preset_skips_time_fraction_without_duration(tmp_path) -> 
     )
 
     labels = [p["label"] for p in pad_slots if p["timestamp_seconds"] is not None]
-    # Only the 5 beat-indexed cues should be placed; 3 time-fraction cues skipped
+    # Only the 4 beat-indexed cues should be placed; 4 time-fraction cues skipped
+    assert "Chorus 2" not in labels
     assert "Breakdown" not in labels
-    assert "Build" not in labels
     assert "Outro" not in labels
-    assert "Intro" in labels
+    assert "Start" in labels
 
 
 def test_autofill_with_unknown_preset_raises(tmp_path) -> None:
@@ -248,5 +248,5 @@ def test_autofill_preset_preserves_manual_pads(tmp_path) -> None:
 
     assert refreshed[0]["label"] == "Custom Intro"
     assert refreshed[0]["source"] == "manual"
-    assert refreshed[1]["label"] == "8 Beats In"
+    assert refreshed[1]["label"] == "2 Bars"
     assert refreshed[1]["source"] == "auto"
