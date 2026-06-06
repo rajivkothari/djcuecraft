@@ -380,6 +380,7 @@ def _rule_matches(rule: NormalizationRule, context: TrackNormalizationContext) -
     field_matched = False
     for value in values:
         candidates = _match_candidates(value, split_genre=rule.field_name == "genre")
+        normalized_value = _normalize_text(value)
         for rule_value in rule.values:
             normalized_rule_value = _normalize_text(rule_value)
             if rule.match_type == "exact" and normalized_rule_value in candidates:
@@ -390,6 +391,11 @@ def _rule_matches(rule: NormalizationRule, context: TrackNormalizationContext) -
             ):
                 field_matched = True
                 break
+            if rule.match_type == "word_boundary":
+                pattern = r'\b' + re.escape(normalized_rule_value) + r'\b'
+                if re.search(pattern, normalized_value):
+                    field_matched = True
+                    break
         if field_matched:
             break
 

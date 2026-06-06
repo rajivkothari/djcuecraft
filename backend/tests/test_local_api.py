@@ -617,3 +617,96 @@ def _save_track(db_path, track: Track):
     with database.connect(db_path) as connection:
         database.save_tracks(connection, [track])
         return database.get_track_by_file_path(connection, track.file_path)
+
+
+# ---- Part B: bulk update API tests (session 7) ----
+
+def test_bulk_update_approves_selected_tracks(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    t1 = _save_track(db_path, Track(file_path="C:/Music/a.mp3", file_name="a.mp3", file_extension=".mp3", review_status=ReviewStatus.NEEDS_REVIEW))
+    t2 = _save_track(db_path, Track(file_path="C:/Music/b.mp3", file_name="b.mp3", file_extension=".mp3", review_status=ReviewStatus.NEEDS_REVIEW))
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/tracks/bulk-update", {"track_ids": [t1["id"], t2["id"]], "review_status": "approved"})
+
+    assert status == 200
+    assert payload["updated"] == 2
+    with database.connect(db_path) as connection:
+        assert database.get_track_by_id(connection, t1["id"])["review_status"] == "approved"
+        assert database.get_track_by_id(connection, t2["id"])["review_status"] == "approved"
+
+
+def test_bulk_update_empty_track_ids_returns_400(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/tracks/bulk-update", {"track_ids": [], "review_status": "approved"})
+
+    assert status == 400
+    assert "No tracks selected" in payload["error"]
+
+
+def test_bulk_update_invalid_review_status_returns_400(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    t1 = _save_track(db_path, Track(file_path="C:/Music/c.mp3", file_name="c.mp3", file_extension=".mp3"))
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/tracks/bulk-update", {"track_ids": [t1["id"]], "review_status": "edited"})
+
+    assert status == 400
+
+
+def test_bulk_update_skips_tracks_already_at_target_status(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    t1 = _save_track(db_path, Track(file_path="C:/Music/d.mp3", file_name="d.mp3", file_extension=".mp3", review_status=ReviewStatus.APPROVED))
+    t2 = _save_track(db_path, Track(file_path="C:/Music/e.mp3", file_name="e.mp3", file_extension=".mp3", review_status=ReviewStatus.NEEDS_REVIEW))
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/tracks/bulk-update", {"track_ids": [t1["id"], t2["id"]], "review_status": "approved"})
+
+    assert status == 200
+    assert payload["updated"] == 1
+    assert payload["skipped"] == 1
+
+
+def test_bulk_update_skips_nonexistent_track_ids(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    t1 = _save_track(db_path, Track(file_path="C:/Music/f.mp3", file_name="f.mp3", file_extension=".mp3", review_status=ReviewStatus.NEEDS_REVIEW))
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "POST", "/api/tracks/bulk-update", {"track_ids": [t1["id"], 99999], "review_status": "approved"})
+
+    assert status == 200
+    assert payload["updated"] == 1
+    assert payload["not_found"] == 1
+
+
+def test_bulk_approve_creates_review_history_with_bulk_action_source(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    t1 = _save_track(db_path, Track(file_path="C:/Music/g.mp3", file_name="g.mp3", file_extension=".mp3", review_status=ReviewStatus.NEEDS_REVIEW))
+
+    with _running_api(db_path, frontend_dir) as server:
+        _request(server, "POST", "/api/tracks/bulk-update", {"track_ids": [t1["id"]], "review_status": "approved"})
+        _, history_payload = _request(server, "GET", f"/api/tracks/{t1['id']}/history")
+
+    history = history_payload["history"]
+    assert len(history) == 1
+    assert history[0]["source"] == "bulk_action"
+    assert history[0]["action"] == "bulk_approve"

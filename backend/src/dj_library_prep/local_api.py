@@ -18,6 +18,7 @@ from dj_library_prep.beat_analyzer import (
     parse_cue_template,
 )
 from dj_library_prep.review_service import (
+    bulk_update_review_status,
     list_review_history,
     list_review_tracks,
     update_review_track,
@@ -186,6 +187,25 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                     self._write_json({"error": str(exc)}, status=400)
                     return
                 self._write_json({"pads": pads})
+                return
+
+            if parsed.path == "/api/tracks/bulk-update":
+                try:
+                    payload = self._read_json()
+                    track_ids = payload.get("track_ids", [])
+                    if not isinstance(track_ids, list) or len(track_ids) == 0:
+                        self._write_json({"error": "No tracks selected."}, status=400)
+                        return
+                    review_status = str(payload.get("review_status", "")).strip()
+                    result = bulk_update_review_status(
+                        [int(tid) for tid in track_ids],
+                        review_status,
+                        database_path,
+                    )
+                except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json(result)
                 return
 
             self._write_json({"error": "Not found"}, status=404)

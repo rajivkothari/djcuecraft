@@ -21,8 +21,8 @@
     {
       "id": "keyword-intro",
       "field": "keyword",
-      "match_type": "contains",
-      "values": ["intro", "hype intro"],
+      "match_type": "word_boundary",
+      "values": ["intro", "hype intro", "dj intro", "clean intro", "dirty intro", "quick intro"],
       "dj_use_tags": ["intro"],
       "confidence": 0.65,
       "review_status": "pending"
@@ -30,10 +30,19 @@
     {
       "id": "keyword-remix",
       "field": "keyword",
-      "match_type": "contains",
-      "values": ["remix", "refix", "edit"],
+      "match_type": "word_boundary",
+      "values": ["remix", "refix", "re-edit"],
       "dj_use_tags": ["remix-edit"],
       "confidence": 0.62,
+      "review_status": "pending"
+    },
+    {
+      "id": "keyword-edit",
+      "field": "keyword",
+      "match_type": "word_boundary",
+      "values": ["edit", "re-edit", "radio edit", "club edit", "dj edit", "short edit", "extended edit", "quick edit"],
+      "dj_use_tags": ["edit"],
+      "confidence": 0.65,
       "review_status": "pending"
     }
   ]
