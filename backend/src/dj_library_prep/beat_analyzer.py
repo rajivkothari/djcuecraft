@@ -24,47 +24,47 @@ class CueTemplate:
 
 CUE_PRESETS: dict[str, tuple[CueTemplate, ...]] = {
     "starter": (
-        CueTemplate("Intro", 0),
-        CueTemplate("8 Beats In", 8),
-        CueTemplate("16 Beats In", 16),
-        CueTemplate("32 Beats In", 32),
-        CueTemplate("64 Beats In", 64),
+        CueTemplate(cue_label="Intro", beat_index=0),
+        CueTemplate(cue_label="8 Beats In", beat_index=8),
+        CueTemplate(cue_label="16 Beats In", beat_index=16),
+        CueTemplate(cue_label="32 Beats In", beat_index=32),
+        CueTemplate(cue_label="64 Beats In", beat_index=64),
     ),
     "phrase": (
-        CueTemplate("Intro", 0),
-        CueTemplate("Phrase 1", 32),
-        CueTemplate("Phrase 2", 64),
-        CueTemplate("Phrase 3", 96),
-        CueTemplate("Phrase 4", 128),
+        CueTemplate(cue_label="Intro", beat_index=0),
+        CueTemplate(cue_label="Phrase 1", beat_index=32),
+        CueTemplate(cue_label="Phrase 2", beat_index=64),
+        CueTemplate(cue_label="Phrase 3", beat_index=96),
+        CueTemplate(cue_label="Phrase 4", beat_index=128),
     ),
     "extended": (
-        CueTemplate("Intro", 0),
-        CueTemplate("8 Beats In", 8),
-        CueTemplate("16 Beats In", 16),
-        CueTemplate("32 Beats In", 32),
-        CueTemplate("64 Beats In", 64),
-        CueTemplate("96 Beats In", 96),
-        CueTemplate("128 Beats In", 128),
+        CueTemplate(cue_label="Intro", beat_index=0),
+        CueTemplate(cue_label="8 Beats In", beat_index=8),
+        CueTemplate(cue_label="16 Beats In", beat_index=16),
+        CueTemplate(cue_label="32 Beats In", beat_index=32),
+        CueTemplate(cue_label="64 Beats In", beat_index=64),
+        CueTemplate(cue_label="96 Beats In", beat_index=96),
+        CueTemplate(cue_label="128 Beats In", beat_index=128),
     ),
     "performance": (
-        CueTemplate("Intro", 0),
-        CueTemplate("8 Beats In", 8),
-        CueTemplate("32 Beats In", 32),
-        CueTemplate("64 Beats In", 64),
-        CueTemplate("128 Beats In", 128),
-        CueTemplate("Breakdown", time_fraction=0.40),
-        CueTemplate("Build", time_fraction=0.70),
-        CueTemplate("Outro", time_fraction=0.88),
+        CueTemplate(cue_label="Intro", beat_index=0),
+        CueTemplate(cue_label="8 Beats In", beat_index=8),
+        CueTemplate(cue_label="16 Beats In", beat_index=16),
+        CueTemplate(cue_label="32 Beats In", beat_index=32),
+        CueTemplate(cue_label="64 Beats In", beat_index=64),
+        CueTemplate(cue_label="Mid", time_fraction=0.55),
+        CueTemplate(cue_label="Last Chorus", time_fraction=0.75),
+        CueTemplate(cue_label="Outro", time_fraction=0.90),
     ),
     "minimix": (
-        CueTemplate("Intro", 0),
-        CueTemplate("1/4", time_fraction=0.25),
-        CueTemplate("Mid", time_fraction=0.50),
-        CueTemplate("3/4", time_fraction=0.75),
-        CueTemplate("Outro Prep", time_fraction=0.85),
-        CueTemplate("Outro", time_fraction=0.90),
-        CueTemplate("Exit", time_fraction=0.95),
-        CueTemplate("End", time_fraction=0.99),
+        CueTemplate(cue_label="Track 1", beat_index=0),
+        CueTemplate(cue_label="Track 2", time_fraction=0.14),
+        CueTemplate(cue_label="Track 3", time_fraction=0.28),
+        CueTemplate(cue_label="Track 4", time_fraction=0.42),
+        CueTemplate(cue_label="Track 5", time_fraction=0.56),
+        CueTemplate(cue_label="Track 6", time_fraction=0.70),
+        CueTemplate(cue_label="Track 7", time_fraction=0.84),
+        CueTemplate(cue_label="Track 8", time_fraction=0.95),
     ),
 }
 
@@ -197,6 +197,7 @@ def propose_cue_points(
         else ReviewStatus.PENDING
     )
     cue_points: list[dict[str, object]] = []
+    used_beat_indices: set[int] = set()
     for cue_template_item in _normalized_cue_template(cue_template):
         if cue_template_item.time_fraction is not None:
             if not total_duration_seconds or not beat_timestamps:
@@ -204,11 +205,16 @@ def propose_cue_points(
             target_time = cue_template_item.time_fraction * total_duration_seconds
             beat_index = _nearest_beat_index(beat_timestamps, target_time)
             timestamp = beat_timestamps[beat_index]
+            if abs(timestamp - target_time) > 2.0:
+                continue
+            if beat_index in used_beat_indices:
+                continue
         else:
             beat_index = cue_template_item.beat_index  # type: ignore[assignment]
             if beat_index >= len(beat_timestamps):
                 continue
             timestamp = beat_timestamps[beat_index]
+        used_beat_indices.add(beat_index)
         cue_points.append(
             {
                 "cue_label": cue_template_item.cue_label,
@@ -268,6 +274,10 @@ def _normalized_cue_template(
         if cue.beat_index is None and cue.time_fraction is None:
             raise ValueError(
                 f"CueTemplate must specify beat_index or time_fraction: {cue.cue_label}"
+            )
+        if cue.beat_index is not None and cue.time_fraction is not None:
+            raise ValueError(
+                f"CueTemplate must specify only one of beat_index or time_fraction: {cue.cue_label}"
             )
         if cue.beat_index is not None and cue.beat_index < 0:
             raise ValueError(f"Cue beat index cannot be negative: {cue.cue_label}")

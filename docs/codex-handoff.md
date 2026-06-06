@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 125 tests pass.
+All 131 tests pass.
 
 ---
 
@@ -167,8 +167,8 @@ A persistent bottom panel cue editor. Click any track's name cell to load it int
 
 | Preset | Beat-indexed cues | Time-fraction cues |
 |--------|------------------|-------------------|
-| `performance` | Intro(0), 8 Beats In(8), 32 Beats In(32), 64 Beats In(64), 128 Beats In(128) | Breakdown(0.40), Build(0.70), Outro(0.88) |
-| `minimix` | Intro(0) | 1/4(0.25), Mid(0.50), 3/4(0.75), Outro Prep(0.85), Outro(0.90), Exit(0.95), End(0.99) |
+| `performance` | Intro(0), 8 Beats In(8), 16 Beats In(16), 32 Beats In(32), 64 Beats In(64) | Mid(0.55), Last Chorus(0.75), Outro(0.90) |
+| `minimix` | Track 1(0) | Track 2(0.14), Track 3(0.28), Track 4(0.42), Track 5(0.56), Track 6(0.70), Track 7(0.84), Track 8(0.95) |
 
 **`DEFAULT_CUE_PRESET` changed** from `"starter"` to `"performance"`.
 
@@ -176,10 +176,15 @@ A persistent bottom panel cue editor. Click any track's name cell to load it int
 
 ### Design notes for Codex
 
-- Time-fraction cues and beat-indexed cues can coexist in one preset. The performance preset deliberately places beat-indexed cues in the first half (where exact beat counts matter for DJ cueing) and time-fraction cues in the second half (where the position is better described relative to track length).
+- Time-fraction cues and beat-indexed cues can coexist in one preset. The performance preset deliberately places beat-indexed cues at the beginning (where exact beat counts matter for DJ cueing) and time-fraction cues toward the end (where position is better described relative to track length).
 - The `total_duration_seconds=0.0` fallback means no new parameter is required at existing call sites. The only caller that passes a real duration is `analyze_beats_for_folder` and `detect_beat_timestamps`.
 - `librosa.get_duration(path=path)` reads from audio container headers without decoding. It is fast and does not increase peak memory.
 - The `beat_index` field in the emitted cue dict for a time-fraction cue holds the **resolved** beat index (the nearest beat), not `None`. This is consistent with how `beat_index` is used downstream (stored in `cue_points.beat_index`).
+- Time-fraction cues are skipped if no detected beat falls within **2.0 seconds** of the target position (sparse beat grid safety valve).
+- Time-fraction cues that resolve to the same beat index as a previously emitted cue are skipped (dedup — only the first cue for a given beat position is kept). This applies against all previously emitted cues in the same proposal, including beat-indexed ones.
+- `_normalized_cue_template` rejects `CueTemplate` instances with **both** `beat_index` and `time_fraction` set (in addition to the existing rejection of neither set).
+- All existing presets (starter, phrase, extended) were converted to keyword-argument form: `CueTemplate(cue_label="...", beat_index=N)`. Behavior is identical; the change makes future reading unambiguous.
+- Custom `--cue` CLI entries remain beat-index-only. `parse_cue_template` always produces `CueTemplate(cue_label=..., beat_index=N, time_fraction=None)`.
 
 ---
 

@@ -52,30 +52,30 @@ Beat-indexed (forward from track start):
 
 - Intro — beat 0
 - 8 Beats In — beat 8
+- 16 Beats In — beat 16
 - 32 Beats In — beat 32
 - 64 Beats In — beat 64
-- 128 Beats In — beat 128
 
 Time-fraction (relative to full track duration):
 
-- Breakdown — 40% through
-- Build — 70% through
-- Outro — 88% through
+- Mid — 55% through
+- Last Chorus — 75% through
+- Outro — 90% through
 
-Time-fraction cues snap to the nearest detected beat. They require the full track duration to be readable — if duration cannot be determined they are silently skipped.
+Time-fraction cues snap to the nearest detected beat. They are silently skipped if the full track duration is unavailable or if no beat falls within 2.0 seconds of the target position.
 
 ### `minimix`
 
-8 cues designed for quick in/out mixing. One beat-indexed start cue plus seven time-fraction cues evenly distributed across the track.
+8 cues designed as manual-anchor orientation points for quick-mix sets. All positions are auto-placed as starting anchors — the DJ renames and repositions them from the playhead. One beat-indexed start cue plus seven equally-spaced time-fraction cues.
 
-- Intro — beat 0
-- 1/4 — 25%
-- Mid — 50%
-- 3/4 — 75%
-- Outro Prep — 85%
-- Outro — 90%
-- Exit — 95%
-- End — 99%
+- Track 1 — beat 0
+- Track 2 — 14% through
+- Track 3 — 28% through
+- Track 4 — 42% through
+- Track 5 — 56% through
+- Track 6 — 70% through
+- Track 7 — 84% through
+- Track 8 — 95% through
 
 ### `starter`
 
@@ -95,7 +95,9 @@ Time-fraction cues snap to the nearest detected beat. They require the full trac
 
 **Beat-index anchors** (`beat_index` field): placed at a fixed number of detected beats from the start of the track. Cues whose beat index exceeds the detected beat count are silently skipped.
 
-**Time-fraction anchors** (`time_fraction` field): placed at a fraction of the full track duration (0.0 = start, 1.0 = end), then snapped to the nearest detected beat. These require that the file's full duration is readable via librosa. If duration is unavailable (e.g. truncated metadata, analysis failure), the cue is silently skipped. Full track duration is captured with `librosa.get_duration(path=path)` before the 180-second truncated audio load.
+**Time-fraction anchors** (`time_fraction` field): placed at a fraction of the full track duration (0.0 = start, 1.0 = end), then snapped to the nearest detected beat. These require that the file's full duration is readable via librosa. If duration is unavailable (e.g. truncated metadata, analysis failure), the cue is silently skipped. If no detected beat falls within 2.0 seconds of the target position, the cue is also skipped. Duplicate resolutions (two time-fraction cues resolving to the same beat index) keep only the first and skip the second. Full track duration is captured with `librosa.get_duration(path=path)` before the 180-second truncated audio load.
+
+Custom `--cue` CLI entries use `LABEL=BEAT_INDEX` format and are always beat-index anchors. Time-fraction anchors are available only through built-in presets.
 
 Custom templates are stored with the provided cue labels and beat indexes. Cue points whose beat indexes exceed the detected beat count are skipped.
 
