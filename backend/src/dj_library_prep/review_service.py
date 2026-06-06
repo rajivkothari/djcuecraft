@@ -119,14 +119,12 @@ def _track_payload(row: Any) -> dict[str, Any]:
         year=values.get("year"),
         file_name=values.get("file_name"),
     )
-    values["suggested_decade"] = values.get("normalized_decade")
-    values["suggested_genre"] = values.get("normalized_primary_genre")
-    values["suggested_subgenre"] = values.get("normalized_subgenre")
     values["suggested_normalized_label"] = _normalized_label(
-        values.get("normalized_decade"),
-        values.get("normalized_primary_genre"),
-        values.get("normalized_subgenre"),
+        values.get("suggested_decade") or values.get("normalized_decade"),
+        values.get("suggested_primary_genre") or values.get("normalized_primary_genre"),
+        values.get("suggested_subgenre") or values.get("normalized_subgenre"),
     )
+    values["suggestion_modified"] = _is_suggestion_modified(values)
     values["review_required"] = (
         suggestion.review_required
         or values["review_status"] == ReviewStatus.NEEDS_REVIEW.value
@@ -231,6 +229,17 @@ def _pending_values_match(
 
 def _compare(value: Any) -> str:
     return "" if value is None else str(value)
+
+
+def _is_suggestion_modified(values: dict) -> bool:
+    if not values.get("suggested_decade"):
+        return False
+    return (
+        _compare(values.get("normalized_decade")) != _compare(values.get("suggested_decade"))
+        or _compare(values.get("normalized_primary_genre")) != _compare(values.get("suggested_primary_genre"))
+        or _compare(values.get("normalized_subgenre")) != _compare(values.get("suggested_subgenre"))
+        or _format_tags(values.get("dj_use_tags")) != _format_tags(values.get("suggested_dj_use_tags"))
+    )
 
 
 def _normalized_label(

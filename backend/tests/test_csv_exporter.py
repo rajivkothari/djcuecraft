@@ -143,6 +143,81 @@ def test_export_approved_tracks_to_json_writes_sidecar_structure(tmp_path) -> No
     assert payload["records"][0]["review"]["genre_confidence"] == 0.92
 
 
+def test_export_json_includes_original_suggestion_section(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    json_path = tmp_path / "export.json"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        artist="Artist",
+        title="Song",
+        year="1999",
+        original_genre="House",
+        normalized_decade="90s",
+        normalized_primary_genre="Electronic",
+        normalized_subgenre="House",
+        dj_use_tags=["electronic"],
+        genre_confidence=0.88,
+        metadata_confidence=1.0,
+        review_status=ReviewStatus.APPROVED,
+        suggested_decade="90s",
+        suggested_primary_genre="Electronic",
+        suggested_subgenre="House",
+        suggested_dj_use_tags=["electronic"],
+        suggestion_confidence=0.88,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+
+    export_approved_tracks_to_json(db_path, json_path)
+
+    payload = json.loads(json_path.read_text())
+    suggestion = payload["records"][0]["original_suggestion"]
+    assert suggestion["decade"] == "90s"
+    assert suggestion["primary_genre"] == "Electronic"
+    assert suggestion["subgenre"] == "House"
+    assert suggestion["dj_use_tags"] == ["electronic"]
+    assert suggestion["confidence"] == 0.88
+
+
+def test_export_csv_includes_suggested_columns(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    csv_path = tmp_path / "export.csv"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        artist="Artist",
+        title="Song",
+        year="2005",
+        original_genre="Techno",
+        normalized_decade="00s",
+        normalized_primary_genre="Electronic",
+        normalized_subgenre="Techno",
+        dj_use_tags=["electronic"],
+        genre_confidence=0.9,
+        metadata_confidence=1.0,
+        review_status=ReviewStatus.APPROVED,
+        suggested_decade="00s",
+        suggested_primary_genre="Electronic",
+        suggested_subgenre="Techno",
+        suggested_dj_use_tags=["electronic"],
+        suggestion_confidence=0.9,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+
+    export_tracks_to_csv(db_path, csv_path)
+
+    rows = list(csv.DictReader(csv_path.open(encoding="utf-8")))
+    assert len(rows) == 1
+    assert rows[0]["suggested_decade"] == "00s"
+    assert rows[0]["suggested_primary_genre"] == "Electronic"
+    assert rows[0]["suggested_subgenre"] == "Techno"
+    assert rows[0]["suggested_dj_use_tags"] == "electronic"
+
+
 def test_export_refuses_audio_file_extension(tmp_path) -> None:
     db_path = tmp_path / "tracks.sqlite3"
     audio_path = tmp_path / "song.mp3"

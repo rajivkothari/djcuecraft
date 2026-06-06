@@ -107,6 +107,92 @@ def test_update_review_track_edits_sqlite_only(tmp_path) -> None:
     assert history[0]["reason"] == "User edited the normalized metadata."
 
 
+def test_track_payload_uses_stored_suggestion_columns(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="90s",
+        normalized_primary_genre="Hip-Hop",
+        normalized_subgenre="Boom Bap",
+        genre_confidence=0.88,
+        suggested_decade="90s",
+        suggested_primary_genre="Hip-Hop",
+        suggested_subgenre="Boom Bap",
+        suggested_dj_use_tags=["hip-hop"],
+        suggestion_confidence=0.88,
+        review_status="needs_review",
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+
+    tracks = list_review_tracks(db_path)
+
+    assert tracks[0]["suggested_normalized_label"] == "90s / Hip-Hop / Boom Bap"
+
+
+def test_suggestion_modified_false_when_normalized_matches_suggestion(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="90s",
+        normalized_primary_genre="Hip-Hop",
+        normalized_subgenre="Boom Bap",
+        suggested_decade="90s",
+        suggested_primary_genre="Hip-Hop",
+        suggested_subgenre="Boom Bap",
+        review_status="pending",
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+
+    tracks = list_review_tracks(db_path)
+
+    assert tracks[0]["suggestion_modified"] is False
+
+
+def test_suggestion_modified_true_when_normalized_differs_from_suggestion(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="00s",
+        normalized_primary_genre="Electronic",
+        suggested_decade="90s",
+        suggested_primary_genre="Hip-Hop",
+        suggested_subgenre="Boom Bap",
+        review_status="edited",
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+
+    tracks = list_review_tracks(db_path)
+
+    assert tracks[0]["suggestion_modified"] is True
+
+
+def test_suggestion_modified_false_when_no_suggestion_stored(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="90s",
+        normalized_primary_genre="Hip-Hop",
+        review_status="pending",
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+
+    tracks = list_review_tracks(db_path)
+
+    assert tracks[0]["suggestion_modified"] is False
+
+
 def test_update_review_track_rejects_unknown_fields(tmp_path) -> None:
     db_path = tmp_path / "tracks.sqlite3"
     track = Track(

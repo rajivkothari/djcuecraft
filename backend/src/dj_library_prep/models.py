@@ -71,6 +71,11 @@ class Track:
     bpm: float | None = None
     bpm_confidence: float = 0.0
     review_status: ReviewStatus = ReviewStatus.PENDING
+    suggested_decade: str | None = None
+    suggested_primary_genre: str | None = None
+    suggested_subgenre: str | None = None
+    suggested_dj_use_tags: list[str] = field(default_factory=list)
+    suggestion_confidence: float = 0.0
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
 
@@ -119,6 +124,11 @@ class Track:
             "bpm": self.bpm,
             "bpm_confidence": self.bpm_confidence,
             "review_status": self.review_status.value,
+            "suggested_decade": self.suggested_decade,
+            "suggested_primary_genre": self.suggested_primary_genre,
+            "suggested_subgenre": self.suggested_subgenre,
+            "suggested_dj_use_tags": json.dumps(self.suggested_dj_use_tags),
+            "suggestion_confidence": self.suggestion_confidence if self.suggestion_confidence else None,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

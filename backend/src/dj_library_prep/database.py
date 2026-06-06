@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from dj_library_prep.models import Track, utc_now_iso
 
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 UNREVIEWED_STATUSES = ("pending", "needs_review")
 
@@ -172,13 +172,19 @@ def save_track(connection: sqlite3.Connection, track: Track) -> None:
             file_path, file_name, file_extension, artist, title, album, year,
             original_genre, normalized_decade, normalized_primary_genre,
             normalized_subgenre, dj_use_tags, metadata_confidence,
-            genre_confidence, bpm, bpm_confidence, review_status, created_at, updated_at
+            genre_confidence, bpm, bpm_confidence, review_status,
+            suggested_decade, suggested_primary_genre, suggested_subgenre,
+            suggested_dj_use_tags, suggestion_confidence,
+            created_at, updated_at
         )
         VALUES (
             :file_path, :file_name, :file_extension, :artist, :title, :album, :year,
             :original_genre, :normalized_decade, :normalized_primary_genre,
             :normalized_subgenre, :dj_use_tags, :metadata_confidence,
-            :genre_confidence, :bpm, :bpm_confidence, :review_status, :created_at, :updated_at
+            :genre_confidence, :bpm, :bpm_confidence, :review_status,
+            :suggested_decade, :suggested_primary_genre, :suggested_subgenre,
+            :suggested_dj_use_tags, :suggestion_confidence,
+            :created_at, :updated_at
         )
         ON CONFLICT(file_path) DO UPDATE SET
             file_name = excluded.file_name,
@@ -213,6 +219,11 @@ def save_track(connection: sqlite3.Connection, track: Track) -> None:
                 WHEN tracks.review_status IN ('approved', 'edited', 'rejected', 'skipped') THEN tracks.review_status
                 ELSE excluded.review_status
             END,
+            suggested_decade = COALESCE(tracks.suggested_decade, excluded.suggested_decade),
+            suggested_primary_genre = COALESCE(tracks.suggested_primary_genre, excluded.suggested_primary_genre),
+            suggested_subgenre = COALESCE(tracks.suggested_subgenre, excluded.suggested_subgenre),
+            suggested_dj_use_tags = COALESCE(tracks.suggested_dj_use_tags, excluded.suggested_dj_use_tags),
+            suggestion_confidence = COALESCE(tracks.suggestion_confidence, excluded.suggestion_confidence),
             updated_at = excluded.updated_at
         """,
         row,
@@ -256,6 +267,11 @@ def list_tracks(connection: sqlite3.Connection) -> list[sqlite3.Row]:
             bpm,
             bpm_confidence,
             review_status,
+            suggested_decade,
+            suggested_primary_genre,
+            suggested_subgenre,
+            suggested_dj_use_tags,
+            suggestion_confidence,
             created_at,
             updated_at
         FROM tracks
@@ -867,6 +883,28 @@ def _migrate_track_lookup_indexes(connection: sqlite3.Connection) -> None:
             connection.execute(sql)
 
 
+def _migrate_suggestion_columns(connection: sqlite3.Connection) -> None:
+    _ensure_column(connection, "tracks", "suggested_decade", "TEXT")
+    _ensure_column(connection, "tracks", "suggested_primary_genre", "TEXT")
+    _ensure_column(connection, "tracks", "suggested_subgenre", "TEXT")
+    _ensure_column(connection, "tracks", "suggested_dj_use_tags", "TEXT")
+    _ensure_column(connection, "tracks", "suggestion_confidence", "REAL")
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(tracks)")}
+    if "normalized_primary_genre" in columns:
+        connection.execute(
+            """
+            UPDATE tracks
+            SET
+                suggested_decade = normalized_decade,
+                suggested_primary_genre = normalized_primary_genre,
+                suggested_subgenre = normalized_subgenre,
+                suggested_dj_use_tags = dj_use_tags,
+                suggestion_confidence = genre_confidence
+            WHERE suggested_decade IS NULL
+            """
+        )
+
+
 def _migrate_pads_table(connection: sqlite3.Connection) -> None:
     connection.execute(PADS_SCHEMA)
     indexes = {
@@ -885,7 +923,8 @@ MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     (1, _migrate_legacy_bpm_columns),
     (2, _migrate_review_history_audit_columns),
     (3, _migrate_track_lookup_indexes),
-    (CURRENT_SCHEMA_VERSION, _migrate_pads_table),
+    (4, _migrate_pads_table),
+    (5, _migrate_suggestion_columns),
 )
 
 

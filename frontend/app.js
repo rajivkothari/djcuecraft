@@ -115,6 +115,9 @@ function renderTrackGroup(track) {
       element.textContent = (track.missing_fields || []).join("; ");
     } else if (field === "row_state" || field === "history_panel") {
       element.textContent = "";
+    } else if (field === "suggestion_modified") {
+      element.textContent = track.suggestion_modified ? "Modified from suggestion" : "";
+      element.className = track.suggestion_modified ? "suggestionModified" : "";
     } else if (field === "review_required") {
       element.textContent = track.review_required ? "Review required" : "Ready to approve";
       element.className = track.review_required ? "reviewFlag warningFlag" : "reviewFlag";
@@ -215,6 +218,11 @@ async function saveTrack(row, summaryRow, forcedStatus = null) {
     const reviewFlag = row.querySelector('[data-field="review_required"]');
     reviewFlag.textContent = updated.review_required ? "Review required" : "Ready to approve";
     reviewFlag.className = updated.review_required ? "reviewFlag warningFlag" : "reviewFlag";
+    const modifiedFlag = row.querySelector('[data-field="suggestion_modified"]');
+    if (modifiedFlag) {
+      modifiedFlag.textContent = updated.suggestion_modified ? "Modified from suggestion" : "";
+      modifiedFlag.className = updated.suggestion_modified ? "suggestionModified" : "";
+    }
     rowState.textContent = "Saved";
 
     if (summaryRow) {

@@ -311,6 +311,11 @@ def _prepare_track(path: Path) -> Track:
     track.normalized_subgenre = suggestion.suggested_subgenre
     track.dj_use_tags = tags.dj_use_tags
     track.genre_confidence = suggestion.confidence
+    track.suggested_decade = suggestion.suggested_decade
+    track.suggested_primary_genre = suggestion.suggested_genre
+    track.suggested_subgenre = suggestion.suggested_subgenre
+    track.suggested_dj_use_tags = list(tags.dj_use_tags)
+    track.suggestion_confidence = suggestion.confidence
     track.review_status = ReviewStatus.PENDING
     if suggestion.review_required or track.missing_fields():
         track.review_status = ReviewStatus.NEEDS_REVIEW

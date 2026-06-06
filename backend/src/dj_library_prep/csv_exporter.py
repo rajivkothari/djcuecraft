@@ -48,6 +48,11 @@ APPROVED_EXPORT_COLUMNS = [
     "album",
     "year",
     "original_genre",
+    "suggested_decade",
+    "suggested_primary_genre",
+    "suggested_subgenre",
+    "suggested_normalized_label",
+    "suggested_dj_use_tags",
     "approved_decade",
     "approved_primary_genre",
     "approved_subgenre",
@@ -164,6 +169,14 @@ def _approved_record(row: sqlite3.Row, audit: sqlite3.Row | None) -> dict[str, A
             "year": row["year"],
             "genre": row["original_genre"],
         },
+        "original_suggestion": {
+            "decade": row["suggested_decade"],
+            "primary_genre": row["suggested_primary_genre"],
+            "subgenre": row["suggested_subgenre"],
+            "normalized_label": _suggestion_label(row),
+            "dj_use_tags": _tags_list(row["suggested_dj_use_tags"] or "[]"),
+            "confidence": row["suggestion_confidence"],
+        },
         "approved_metadata": {
             "decade": row["normalized_decade"],
             "primary_genre": row["normalized_primary_genre"],
@@ -194,6 +207,11 @@ def _approved_csv_row(export: dict[str, Any], record: dict[str, Any]) -> dict[st
         "album": record["original_metadata"]["album"],
         "year": record["original_metadata"]["year"],
         "original_genre": record["original_metadata"]["genre"],
+        "suggested_decade": record["original_suggestion"]["decade"],
+        "suggested_primary_genre": record["original_suggestion"]["primary_genre"],
+        "suggested_subgenre": record["original_suggestion"]["subgenre"],
+        "suggested_normalized_label": record["original_suggestion"]["normalized_label"],
+        "suggested_dj_use_tags": ";".join(record["original_suggestion"]["dj_use_tags"]),
         "approved_decade": record["approved_metadata"]["decade"],
         "approved_primary_genre": record["approved_metadata"]["primary_genre"],
         "approved_subgenre": record["approved_metadata"]["subgenre"],
@@ -236,6 +254,16 @@ def _prepare_output_path(output_path: str | Path, expected_suffix: str) -> Path:
     if output.parent and str(output.parent) != ".":
         output.parent.mkdir(parents=True, exist_ok=True)
     return output
+
+
+def _suggestion_label(row: sqlite3.Row) -> str:
+    return " / ".join(
+        [
+            str(row["suggested_decade"] or "Unknown"),
+            str(row["suggested_primary_genre"] or "Unknown"),
+            str(row["suggested_subgenre"] or "Unknown"),
+        ]
+    )
 
 
 def _normalized_label(row: sqlite3.Row) -> str:

@@ -382,6 +382,139 @@ def test_insert_missing_cue_points_preserves_existing_cues(tmp_path) -> None:
     assert cues[1]["beat_index"] == 32
 
 
+def test_migration_adds_suggestion_columns_to_existing_database(tmp_path) -> None:
+    db_path = tmp_path / "pre_suggestion.sqlite3"
+    _create_legacy_tracks_table(db_path)
+
+    with database.connect(db_path) as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(tracks)")
+        }
+        schema_version = database.get_schema_version(connection)
+
+    assert "suggested_decade" in columns
+    assert "suggested_primary_genre" in columns
+    assert "suggested_subgenre" in columns
+    assert "suggested_dj_use_tags" in columns
+    assert "suggestion_confidence" in columns
+    assert schema_version == database.CURRENT_SCHEMA_VERSION
+
+
+def test_suggestion_columns_backfilled_from_normalized_on_migration(tmp_path) -> None:
+    db_path = tmp_path / "backfill.sqlite3"
+    _create_legacy_tracks_table(db_path)
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        INSERT INTO tracks (
+            file_path, file_name, file_extension, normalized_decade,
+            normalized_primary_genre, normalized_subgenre, dj_use_tags,
+            metadata_confidence, genre_confidence, review_status,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "C:/Music/song.mp3", "song.mp3", ".mp3", "90s",
+            "Hip-Hop", "Boom Bap", '["hip-hop"]',
+            1.0, 0.9, "pending", "2024-01-01T00:00:00", "2024-01-01T00:00:00",
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    with database.connect(db_path) as connection:
+        row = connection.execute("SELECT * FROM tracks").fetchone()
+
+    assert row["suggested_decade"] == "90s"
+    assert row["suggested_primary_genre"] == "Hip-Hop"
+    assert row["suggested_subgenre"] == "Boom Bap"
+    assert row["suggested_dj_use_tags"] == '["hip-hop"]'
+    assert row["suggestion_confidence"] == 0.9
+
+
+def test_save_track_stores_suggestion_columns_on_first_insert(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="00s",
+        normalized_primary_genre="Electronic",
+        normalized_subgenre="House",
+        dj_use_tags=["electronic", "dance"],
+        genre_confidence=0.85,
+        suggested_decade="00s",
+        suggested_primary_genre="Electronic",
+        suggested_subgenre="House",
+        suggested_dj_use_tags=["electronic", "dance"],
+        suggestion_confidence=0.85,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        row = database.list_tracks(connection)[0]
+
+    assert row["suggested_decade"] == "00s"
+    assert row["suggested_primary_genre"] == "Electronic"
+    assert row["suggested_subgenre"] == "House"
+    assert row["suggestion_confidence"] == 0.85
+
+
+def test_rescan_does_not_overwrite_suggestion_columns(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_v1 = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="90s",
+        normalized_primary_genre="Hip-Hop",
+        suggested_decade="90s",
+        suggested_primary_genre="Hip-Hop",
+        suggestion_confidence=0.9,
+    )
+    track_v2 = Track(
+        file_path="C:/Music/song.mp3",
+        file_name="song.mp3",
+        file_extension=".mp3",
+        normalized_decade="00s",
+        normalized_primary_genre="Electronic",
+        suggested_decade="00s",
+        suggested_primary_genre="Electronic",
+        suggestion_confidence=0.75,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track_v1])
+        database.save_tracks(connection, [track_v2])
+        row = database.list_tracks(connection)[0]
+
+    assert row["suggested_decade"] == "90s"
+    assert row["suggested_primary_genre"] == "Hip-Hop"
+    assert row["suggestion_confidence"] == 0.9
+
+
+def test_list_tracks_includes_suggestion_columns(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track = Track(
+        file_path="C:/Music/track.mp3",
+        file_name="track.mp3",
+        file_extension=".mp3",
+        suggested_decade="10s",
+        suggested_primary_genre="Dance",
+        suggested_subgenre="EDM",
+        suggested_dj_use_tags=["dance"],
+        suggestion_confidence=0.8,
+    )
+    with database.connect(db_path) as connection:
+        database.save_tracks(connection, [track])
+        rows = database.list_tracks(connection)
+
+    assert rows[0]["suggested_decade"] == "10s"
+    assert rows[0]["suggested_primary_genre"] == "Dance"
+    assert rows[0]["suggested_subgenre"] == "EDM"
+    assert rows[0]["suggestion_confidence"] == 0.8
+
+
 def _create_legacy_tracks_table(db_path) -> None:
     connection = sqlite3.connect(db_path)
     connection.execute(

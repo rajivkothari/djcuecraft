@@ -72,6 +72,80 @@ def test_scan_folder_stores_metadata_suggestions_without_touching_audio_file(
     assert audio_path.read_bytes() == original_bytes
 
 
+def test_scan_folder_stores_suggestion_snapshot_on_first_scan(
+    tmp_path, monkeypatch
+) -> None:
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    audio_path = music_dir / "house.mp3"
+    audio_path.write_bytes(b"not real audio")
+    db_path = tmp_path / "tracks.sqlite3"
+
+    def fake_read_track_metadata(path):
+        return Track(
+            file_path=str(path),
+            file_name=path.name,
+            file_extension=path.suffix,
+            artist="DJ Test",
+            title="House Track",
+            year="2010",
+            original_genre="Electronic",
+            metadata_confidence=1.0,
+        )
+
+    monkeypatch.setattr(cli, "read_track_metadata", fake_read_track_metadata)
+
+    cli.scan_folder(music_dir, db_path)
+
+    with database.connect(db_path) as connection:
+        rows = database.list_tracks(connection)
+
+    assert rows[0]["suggested_decade"] == rows[0]["normalized_decade"]
+    assert rows[0]["suggested_primary_genre"] == rows[0]["normalized_primary_genre"]
+    assert rows[0]["suggestion_confidence"] is not None
+
+
+def test_rescan_does_not_overwrite_suggestion_snapshot(
+    tmp_path, monkeypatch
+) -> None:
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    audio_path = music_dir / "house.mp3"
+    audio_path.write_bytes(b"not real audio")
+    db_path = tmp_path / "tracks.sqlite3"
+
+    call_count = 0
+
+    def fake_read_track_metadata(path):
+        nonlocal call_count
+        call_count += 1
+        genre = "Electronic" if call_count == 1 else "Hip-Hop"
+        return Track(
+            file_path=str(path),
+            file_name=path.name,
+            file_extension=path.suffix,
+            artist="DJ Test",
+            title="Track",
+            year="2010",
+            original_genre=genre,
+            metadata_confidence=1.0,
+        )
+
+    monkeypatch.setattr(cli, "read_track_metadata", fake_read_track_metadata)
+
+    cli.scan_folder(music_dir, db_path)
+
+    with database.connect(db_path) as connection:
+        first_suggestion = database.list_tracks(connection)[0]["suggested_primary_genre"]
+
+    cli.scan_folder(music_dir, db_path)
+
+    with database.connect(db_path) as connection:
+        second_suggestion = database.list_tracks(connection)[0]["suggested_primary_genre"]
+
+    assert first_suggestion == second_suggestion
+
+
 def test_analyze_beats_command_passes_custom_cue_template(monkeypatch) -> None:
     captured = {}
 
