@@ -115,7 +115,15 @@ function renderTrackRow(track) {
 
   const trackCell = row.querySelector(".trackCell");
   trackCell.classList.add("selectable");
-  trackCell.addEventListener("click", () => selectTrackForEditor(track, row));
+  row.classList.add("selectableRow");
+  row.addEventListener("click", (event) => {
+    // Ignore clicks on interactive controls so editing fields/buttons
+    // does not also re-select the track.
+    if (event.target.closest("input, select, button, textarea, .historyPanel")) {
+      return;
+    }
+    selectTrackForEditor(track, row);
+  });
   return row;
 }
 

@@ -367,15 +367,26 @@ dd {
   cursor: pointer;
 }
 
-.trackCell.selectable:hover {
+.selectableRow {
+  cursor: pointer;
+}
+
+.selectableRow:hover {
   background: #eef6f4;
+}
+
+.trackCell.selectable::after {
+  color: var(--muted);
+  content: " ⏏ click to open in editor";
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .selectedRow {
   background: #e6f2f0;
 }
 
-.selectedRow .trackCell.selectable {
+.selectedRow td:first-child {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
