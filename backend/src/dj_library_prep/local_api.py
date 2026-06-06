@@ -14,6 +14,7 @@ from dj_library_prep.beat_analyzer import (
     CueTemplate,
     analyze_beats_for_folder,
     cue_template_for_preset,
+    detect_beat_timestamps,
     parse_cue_template,
 )
 from dj_library_prep.review_service import (
@@ -136,6 +137,22 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
 
             parts = parsed.path.strip("/").split("/")
             if (
+                len(parts) == 4
+                and parts[:2] == ["api", "tracks"]
+                and parts[3] == "analyze-beats"
+            ):
+                try:
+                    track_id = int(parts[2])
+                    result = _analyze_beats_for_track(database_path, track_id)
+                except KeyError as exc:
+                    self._write_json({"error": str(exc)}, status=404)
+                    return
+                except (RuntimeError, ValueError, OSError) as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json(result)
+                return
+            if (
                 len(parts) == 5
                 and parts[:2] == ["api", "tracks"]
                 and parts[3] == "pads"
@@ -195,6 +212,15 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                     self._write_json({"error": str(exc)}, status=400)
                     return
                 self._write_json({"cleared": True})
+                return
+            if len(parts) == 4 and parts[:2] == ["api", "tracks"] and parts[3] == "pads":
+                try:
+                    track_id = int(parts[2])
+                    pads = pad_service.clear_all_pads(track_id, database_path)
+                except ValueError as exc:
+                    self._write_json({"error": str(exc)}, status=400)
+                    return
+                self._write_json({"pads": pads})
                 return
             self._write_json({"error": "Not found"}, status=404)
 
@@ -292,6 +318,39 @@ def _cue_template_from_payload(payload: dict) -> tuple[CueTemplate, ...]:
 def _list_cue_points(database_path: Path) -> list[dict]:
     with database.connect(database_path) as connection:
         return [dict(row) for row in database.list_cue_points(connection)]
+
+
+def _analyze_beats_for_track(database_path: Path, track_id: int) -> dict:
+    """Detect beats for one track's file and phrase-fill its cue pads.
+
+    Read-only toward the audio file. On detection failure, existing beats and
+    pads are preserved (no overwrite) and a 400-worthy error is raised.
+    """
+    with database.connect(database_path) as connection:
+        track = database.get_track_by_id(connection, track_id)
+        if track is None:
+            raise KeyError(f"Track not found: {track_id}")
+        file_path = track["file_path"]
+
+    result = detect_beat_timestamps(file_path)
+    if not result.beat_timestamps:
+        raise ValueError(
+            "Beat detection found no beats for this track. "
+            "Existing beats and pads were preserved."
+        )
+
+    with database.connect(database_path) as connection:
+        stored_beats = database.replace_beat_timestamps(
+            connection,
+            track_id=track_id,
+            file_path=file_path,
+            beat_timestamps=result.beat_timestamps,
+            beat_confidence=result.beat_confidence,
+        )
+        connection.commit()
+
+    pads = pad_service.autofill_pads(track_id, database_path=database_path)
+    return {"pads": pads, "stored_beats": stored_beats}
 
 
 def _browse_for_folder() -> str | None:

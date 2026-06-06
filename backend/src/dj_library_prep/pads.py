@@ -96,6 +96,15 @@ def clear_pad(
         database.clear_pad(connection, track_id, pad_index)
 
 
+def clear_all_pads(
+    track_id: int,
+    database_path: str | Path = "djcuecraft.sqlite3",
+) -> list[dict[str, Any]]:
+    with database.connect(database_path) as connection:
+        database.clear_all_pads(connection, track_id)
+    return list_pads_for_track(track_id, database_path)
+
+
 def autofill_pads(
     track_id: int,
     *,

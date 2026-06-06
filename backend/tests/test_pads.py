@@ -144,3 +144,15 @@ def test_clear_pad_removes_slot(tmp_path) -> None:
     refreshed = pads.list_pads_for_track(track_id, db_path)
     assert refreshed[0]["timestamp_seconds"] is None
     assert refreshed[0]["source"] is None
+
+
+def test_clear_all_pads_empties_every_slot(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    track_id = _track_with_beats(db_path)
+    pads.autofill_pads(track_id, database_path=db_path)
+
+    refreshed = pads.clear_all_pads(track_id, db_path)
+
+    assert len(refreshed) == 8
+    assert all(pad["timestamp_seconds"] is None for pad in refreshed)
+    assert all(pad["source"] is None for pad in refreshed)

@@ -393,6 +393,117 @@ def test_audio_endpoint_rejects_missing_file(tmp_path) -> None:
     assert status == 404
 
 
+def test_per_track_analyze_beats_detects_and_fills_pads(tmp_path, monkeypatch) -> None:
+    from dj_library_prep.beat_analyzer import BeatAnalysisResult
+
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+
+    monkeypatch.setattr(
+        local_api,
+        "detect_beat_timestamps",
+        lambda path: BeatAnalysisResult(
+            beat_timestamps=[round(i * 0.5, 3) for i in range(300)],
+            beat_confidence=0.8,
+        ),
+    )
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(
+            server, "POST", f"/api/tracks/{saved_track['id']}/analyze-beats"
+        )
+
+    assert status == 200
+    assert payload["stored_beats"] == 300
+    assert payload["pads"][0]["timestamp_seconds"] == 0.0
+    assert payload["pads"][1]["timestamp_seconds"] == 16.0
+
+
+def test_per_track_analyze_beats_preserves_on_failure(tmp_path, monkeypatch) -> None:
+    from dj_library_prep.beat_analyzer import BeatAnalysisResult
+
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            beat_timestamps=[float(i) for i in range(40)],
+            beat_confidence=0.8,
+        )
+        connection.commit()
+
+    monkeypatch.setattr(
+        local_api,
+        "detect_beat_timestamps",
+        lambda path: BeatAnalysisResult(beat_timestamps=[], beat_confidence=0.0),
+    )
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(
+            server, "POST", f"/api/tracks/{saved_track['id']}/analyze-beats"
+        )
+
+    assert status == 400
+    with database.connect(db_path) as connection:
+        beats = database.list_beat_timestamps(connection)
+    assert len(beats) == 40  # preserved
+
+
+def test_clear_all_pads_endpoint(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    track_id = saved_track["id"]
+    with database.connect(db_path) as connection:
+        database.replace_beat_timestamps(
+            connection,
+            track_id=track_id,
+            file_path=saved_track["file_path"],
+            beat_timestamps=[round(i * 0.5, 3) for i in range(300)],
+            beat_confidence=0.8,
+        )
+        connection.commit()
+
+    with _running_api(db_path, frontend_dir) as server:
+        _request(server, "POST", f"/api/tracks/{track_id}/pads/auto-fill", {})
+        status, payload = _request(server, "DELETE", f"/api/tracks/{track_id}/pads")
+
+    assert status == 200
+    assert len(payload["pads"]) == 8
+    assert all(pad["timestamp_seconds"] is None for pad in payload["pads"])
+
+
 @contextmanager
 def _running_api(database_path, frontend_dir):
     handler = _handler_factory(frontend_dir, database_path)

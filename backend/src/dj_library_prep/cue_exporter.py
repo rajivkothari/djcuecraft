@@ -7,18 +7,20 @@ from typing import Any
 from dj_library_prep import database
 
 
+# Cue export now reflects the per-track cue pads (the single cue model).
+# Only pads that have a captured position are exported. Output is a sidecar
+# review CSV; no audio files or DJ software databases are written.
 CUE_EXPORT_COLUMNS = [
-    "id",
     "track_id",
     "file_path",
     "file_name",
     "artist",
     "title",
-    "cue_label",
-    "beat_index",
+    "pad_index",
+    "label",
     "timestamp_seconds",
-    "cue_confidence",
-    "review_status",
+    "beat_index",
+    "source",
     "created_at",
     "updated_at",
 ]
@@ -33,7 +35,11 @@ def export_cue_points_to_csv(
         output.parent.mkdir(parents=True, exist_ok=True)
 
     with database.connect(database_path) as connection:
-        rows = database.list_cue_points(connection)
+        rows = [
+            row
+            for row in database.list_all_pads(connection)
+            if row["timestamp_seconds"] is not None
+        ]
 
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=CUE_EXPORT_COLUMNS)

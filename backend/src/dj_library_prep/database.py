@@ -638,6 +638,36 @@ def clear_pad(connection: sqlite3.Connection, track_id: int, pad_index: int) -> 
     connection.commit()
 
 
+def clear_all_pads(connection: sqlite3.Connection, track_id: int) -> None:
+    connection.execute("DELETE FROM pads WHERE track_id = ?", (track_id,))
+    connection.commit()
+
+
+def list_all_pads(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    cursor = connection.execute(
+        """
+        SELECT
+            pads.id,
+            pads.track_id,
+            tracks.file_path,
+            tracks.file_name,
+            tracks.artist,
+            tracks.title,
+            pads.pad_index,
+            pads.label,
+            pads.timestamp_seconds,
+            pads.beat_index,
+            pads.source,
+            pads.created_at,
+            pads.updated_at
+        FROM pads
+        LEFT JOIN tracks ON tracks.id = pads.track_id
+        ORDER BY tracks.file_path, pads.pad_index
+        """
+    )
+    return list(cursor.fetchall())
+
+
 def list_beat_timestamps_for_track(
     connection: sqlite3.Connection, track_id: int
 ) -> list[float]:
