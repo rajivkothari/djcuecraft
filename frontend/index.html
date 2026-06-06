@@ -82,6 +82,12 @@
             Zoom
             <input type="range" id="zoomRange" min="4" max="64" value="16" step="4" />
           </label>
+          <div class="nudgeControl">
+            <button id="nudgeLeft" type="button" class="nudgeBtn secondaryButton" title="Shift grid earlier (shift+click = 1ms)">&#9664;</button>
+            <span id="nudgeValue" class="nudgeValue">+0ms</span>
+            <button id="nudgeRight" type="button" class="nudgeBtn secondaryButton" title="Shift grid later (shift+click = 1ms)">&#9654;</button>
+            <button id="nudgeReset" type="button" class="nudgeBtn secondaryButton" title="Reset grid offset">Reset</button>
+          </div>
           <span id="editorBpm" class="editorBpm"></span>
         </div>
       </div>

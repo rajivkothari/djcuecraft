@@ -725,6 +725,27 @@ main {
   width: 80px;
 }
 
+.nudgeControl {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.nudgeBtn {
+  font-size: 11px;
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+}
+
+.nudgeValue {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: center;
+}
+
 /* ---- Waveform canvases ---- */
 
 .waveformOverview {

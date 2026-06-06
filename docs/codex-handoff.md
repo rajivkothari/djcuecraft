@@ -6,7 +6,39 @@ All 184 tests pass.
 
 ---
 
-## Fix Session — Frontend Audio + Beat Grid (post-Session 7)
+## Fix Session 2 — Metronome + Beat Grid Nudge (post-Fix Session 1)
+
+### Problem 1 — Metronome still silent
+
+Root cause: `getAudioContext()` created both gain nodes inside the `if (!audioCtx)` block, so if `audioCtx` was already created (e.g. from `decodeAudioData`), the gain nodes were never initialised.
+
+Fixes applied:
+- **1A — getAudioContext()**: Split into three independent `if` guards so `trackGainNode` and `metronomeGainNode` are created whenever they're null, regardless of how `audioCtx` was first created.
+- **1B — Metronome toggle**: Handler is now `async`; `await ctx.resume()` before any scheduling. Plays an immediate confirmation click on enable so the user hears proof the chain works.
+- **1C — clickAt() guard**: Defensive creation of `metronomeGainNode` inside `clickAt()` if somehow still null at call time. Starting gain raised to 0.6.
+- **1D — scheduleMetronome()**: Lookahead raised to 0.2s. Uses explicit `delay = nextBeatTime - pos` → `ctxWhen = ctx.currentTime + Math.max(0, delay)`. Tolerance tightened to `-0.01`.
+- **1E — resetMetronome()**: Applies `gridNudge` to the anchor: `anchor = metronomeAnchor() + gridNudge`. Full BPM validity guard.
+- **1F — startMetronome()**: Resumes AudioContext if suspended. Interval reduced from 25ms to 20ms for tighter scheduling.
+- **1G — startPlaybackFrom()**: Made `async`; `await ctx.resume()` before creating source node.
+- **1H — Volume sliders**: Both `trackVolume` and `metronomeVolume` listeners call `getAudioContext()` first to ensure gain nodes exist before setting `.gain.value`.
+
+### Problem 2 — Beat grid nudge control
+
+Added a session-only beat grid offset (±500ms range, ±10ms per click, ±1ms with shift).
+
+- **State**: `let gridNudge = 0` (seconds). Does NOT modify stored beat timestamps.
+- **UI** (`index.html`): Three-button control group (`#nudgeLeft`, `#nudgeRight`, `#nudgeReset`) and a display span (`#nudgeValue`) added to `.editorTransport`.
+- **Styling** (`styles.css`): `.nudgeControl`, `.nudgeBtn`, `.nudgeValue` classes.
+- **Logic** (`app.js`):
+  - `applyNudge(deltaMs)`: clamps, calls `updateNudgeDisplay()`, `resetMetronome()`, nulls `overviewOffscreen`, redraws.
+  - `updateNudgeDisplay()`: shows "+Nms" / "-Nms"; hot-pink colour when non-zero.
+  - `renderBeatGrid()`: uses `beatTimestamps[i] + gridNudge` for x position.
+  - `selectTrackForEditor()`: resets `gridNudge = 0` on track change.
+- **Pads and cues are NOT affected** — their positions remain absolute track time.
+
+---
+
+## Fix Session 1 — Frontend Audio + Beat Grid (post-Session 7)
 
 ### Problem 1 — CUE_PRESETS bar-based labels (backend)
 

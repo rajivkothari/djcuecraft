@@ -405,6 +405,12 @@ let beatTimestamps = [];
 let beatConfidence = 0;
 let zoomBeats = 16;
 let detailCenter = 0;
+let gridNudge = 0; // seconds; applied to beat grid display and metronome, NOT to stored timestamps
+
+const nudgeLeftBtn = document.querySelector("#nudgeLeft");
+const nudgeRightBtn = document.querySelector("#nudgeRight");
+const nudgeResetBtn = document.querySelector("#nudgeReset");
+const nudgeValueDisplay = document.querySelector("#nudgeValue");
 
 playButton.addEventListener("click", togglePlay);
 stopButton.addEventListener("click", stopPlayback);
@@ -412,21 +418,38 @@ analyzeBeatsButton.addEventListener("click", analyzeTrackBeats);
 autoFillPadsButton.addEventListener("click", autoFillPads);
 clearAllPadsButton.addEventListener("click", clearAllPads);
 trackVolume.addEventListener("input", () => {
+  getAudioContext();
   if (trackGainNode) trackGainNode.gain.value = trackVolume.value / 100;
 });
 metronomeVolume.addEventListener("input", () => {
+  getAudioContext();
   if (metronomeGainNode) metronomeGainNode.gain.value = metronomeVolume.value / 100;
 });
 zoomRange.addEventListener("input", () => {
   zoomBeats = Number(zoomRange.value);
   drawAll();
 });
-metronomeToggle.addEventListener("change", () => {
-  if (metronomeToggle.checked && isPlaying) {
-    startMetronome();
+metronomeToggle.addEventListener("change", async () => {
+  const ctx = getAudioContext();
+  if (ctx.state === "suspended") await ctx.resume();
+  if (metronomeToggle.checked) {
+    clickAt(ctx, ctx.currentTime + 0.05);
+    if (isPlaying) {
+      resetMetronome();
+      startMetronome();
+    }
   } else {
     stopMetronome();
   }
+});
+nudgeLeftBtn.addEventListener("click", (e) => applyNudge(e.shiftKey ? -1 : -10));
+nudgeRightBtn.addEventListener("click", (e) => applyNudge(e.shiftKey ? 1 : 10));
+nudgeResetBtn.addEventListener("click", () => {
+  gridNudge = 0;
+  updateNudgeDisplay();
+  resetMetronome();
+  overviewOffscreen = null;
+  drawAll();
 });
 overviewCanvas.addEventListener("click", (event) => {
   if (!audioBuffer || duration <= 0) return;
@@ -457,9 +480,13 @@ window.addEventListener("resize", () => {
 function getAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (!trackGainNode) {
     trackGainNode = audioCtx.createGain();
     trackGainNode.gain.value = trackVolume.value / 100;
     trackGainNode.connect(audioCtx.destination);
+  }
+  if (!metronomeGainNode) {
     metronomeGainNode = audioCtx.createGain();
     metronomeGainNode.gain.value = metronomeVolume.value / 100;
     metronomeGainNode.connect(audioCtx.destination);
@@ -483,6 +510,8 @@ async function selectTrackForEditor(track, rowEl) {
   beatTimestamps = [];
   beatConfidence = 0;
   detailCenter = 0;
+  gridNudge = 0;
+  updateNudgeDisplay();
 
   editorTrackName.textContent = track.file_name || track.file_path || "Track";
   editorTrackMeta.textContent = [track.artist, track.title].filter(Boolean).join(" — ");
@@ -573,9 +602,10 @@ async function togglePlay() {
   }
 }
 
-function startPlaybackFrom(offset) {
+async function startPlaybackFrom(offset) {
   if (!audioBuffer) return;
   const ctx = getAudioContext();
+  if (ctx.state === "suspended") await ctx.resume();
   stopSource();
   sourceNode = ctx.createBufferSource();
   sourceNode.buffer = audioBuffer;
@@ -688,18 +718,26 @@ function metronomeAnchor() {
 }
 
 function resetMetronome() {
-  if (!selectedTrack || !selectedTrack.bpm) return;
-  const secPerBeat = 60 / Number(selectedTrack.bpm);
+  if (!selectedTrack) return;
+  const bpm = Number(selectedTrack.bpm);
+  if (!bpm || bpm <= 0 || Number.isNaN(bpm)) return;
+  const secPerBeat = 60 / bpm;
   const pos = currentPosition();
-  const anchor = metronomeAnchor();
-  const beatsFromAnchor = Math.ceil((pos - anchor) / secPerBeat);
-  nextBeatTime = anchor + beatsFromAnchor * secPerBeat;
+  const anchor = metronomeAnchor() + gridNudge;
+  const elapsed = pos - anchor;
+  const beatsSinceAnchor = Math.ceil(elapsed / secPerBeat);
+  nextBeatTime = anchor + beatsSinceAnchor * secPerBeat;
 }
 
 function startMetronome() {
-  if (metronomeTimer || !selectedTrack || !selectedTrack.bpm) return;
+  if (metronomeTimer) return;
+  if (!selectedTrack) return;
+  const bpm = Number(selectedTrack.bpm);
+  if (!bpm || bpm <= 0 || Number.isNaN(bpm)) return;
+  const ctx = getAudioContext();
+  if (ctx.state === "suspended") ctx.resume();
   resetMetronome();
-  metronomeTimer = setInterval(scheduleMetronome, 25);
+  metronomeTimer = setInterval(scheduleMetronome, 20);
 }
 
 function stopMetronome() {
@@ -710,27 +748,37 @@ function stopMetronome() {
 }
 
 function scheduleMetronome() {
-  if (!isPlaying || !selectedTrack || !selectedTrack.bpm) return;
+  if (!isPlaying || !selectedTrack) return;
+  const bpm = Number(selectedTrack.bpm);
+  if (!bpm || bpm <= 0 || Number.isNaN(bpm)) return;
   const ctx = getAudioContext();
-  const secPerBeat = 60 / Number(selectedTrack.bpm);
-  const lookahead = 0.15;
+  const secPerBeat = 60 / bpm;
+  const lookahead = 0.2;
   const pos = currentPosition();
   while (nextBeatTime < pos + lookahead) {
-    if (nextBeatTime >= pos - 0.02 && nextBeatTime <= duration) {
-      clickAt(ctx, ctx.currentTime + Math.max(0, nextBeatTime - pos));
+    if (nextBeatTime >= pos - 0.01 && nextBeatTime <= duration) {
+      const delay = nextBeatTime - pos;
+      const ctxWhen = ctx.currentTime + Math.max(0, delay);
+      clickAt(ctx, ctxWhen);
     }
     nextBeatTime += secPerBeat;
   }
 }
 
 function clickAt(ctx, when) {
+  if (!metronomeGainNode) {
+    metronomeGainNode = ctx.createGain();
+    metronomeGainNode.gain.value = metronomeVolume.value / 100;
+    metronomeGainNode.connect(ctx.destination);
+  }
   const osc = ctx.createOscillator();
   const clickGain = ctx.createGain();
   osc.type = "square";
   osc.frequency.value = 1000;
-  clickGain.gain.setValueAtTime(0.5, when);
+  clickGain.gain.setValueAtTime(0.6, when);
   clickGain.gain.exponentialRampToValueAtTime(0.001, when + 0.08);
-  osc.connect(clickGain).connect(metronomeGainNode);
+  osc.connect(clickGain);
+  clickGain.connect(metronomeGainNode);
   osc.start(when);
   osc.stop(when + 0.09);
 }
@@ -1005,7 +1053,7 @@ function renderBeatGrid(ctx, width, height, startTime, endTime, showLabels) {
   if (timeRange <= 0) return;
 
   for (let i = 0; i < beatTimestamps.length; i++) {
-    const t = beatTimestamps[i];
+    const t = beatTimestamps[i] + gridNudge;
     if (t < startTime || t > endTime) continue;
     const x = ((t - startTime) / timeRange) * width;
     const isBar = (i % 4) === 0;
@@ -1019,6 +1067,21 @@ function renderBeatGrid(ctx, width, height, startTime, endTime, showLabels) {
       ctx.fillText(String(barNum), x + 3, 12);
     }
   }
+}
+
+function applyNudge(deltaMs) {
+  gridNudge += deltaMs / 1000;
+  gridNudge = Math.max(-0.5, Math.min(0.5, gridNudge));
+  updateNudgeDisplay();
+  resetMetronome();
+  overviewOffscreen = null;
+  drawAll();
+}
+
+function updateNudgeDisplay() {
+  const ms = Math.round(gridNudge * 1000);
+  nudgeValueDisplay.textContent = (ms >= 0 ? "+" : "") + ms + "ms";
+  nudgeValueDisplay.style.color = ms === 0 ? "var(--text-secondary)" : "var(--accent)";
 }
 
 /* ---- Pads ---- */
