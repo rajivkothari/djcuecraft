@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-06
 Branch: `claude/sleepy-volta-AlMso`
-All 131 tests pass.
+All 132 tests pass.
 
 ---
 
@@ -185,6 +185,62 @@ A persistent bottom panel cue editor. Click any track's name cell to load it int
 - `_normalized_cue_template` rejects `CueTemplate` instances with **both** `beat_index` and `time_fraction` set (in addition to the existing rejection of neither set).
 - All existing presets (starter, phrase, extended) were converted to keyword-argument form: `CueTemplate(cue_label="...", beat_index=N)`. Behavior is identical; the change makes future reading unambiguous.
 - Custom `--cue` CLI entries remain beat-index-only. `parse_cue_template` always produces `CueTemplate(cue_label=..., beat_index=N, time_fraction=None)`.
+
+---
+
+## Dual-Canvas Waveform, Beat Grid, and Zoom (Session 3)
+
+**Files changed:** `local_api.py`, `frontend/index.html`, `frontend/app.js`, `frontend/styles.css`
+**Tests added:** `test_local_api.py` (3 new tests, 132 total)
+
+### Beats API endpoint
+
+`GET /api/tracks/{id}/beats` returns:
+```json
+{ "beats": [0.0, 0.512, 1.023, ...], "beat_confidence": 0.76 }
+```
+Implemented in `local_api.py` via `_list_beats_for_track()`. Uses `database.list_beat_timestamps_for_track()` for the beat array and a direct query for the per-track confidence value (all rows for a track share the same confidence). Returns `{"beats": [], "beat_confidence": 0.0}` when no beats are stored.
+
+### Dual-canvas architecture
+
+Two canvases replace the single waveform canvas:
+
+| Canvas | CSS class | Height | Purpose |
+|--------|-----------|--------|---------|
+| `#waveformOverview` | `.waveformOverview` | 80px | Full track, click-to-seek, zoom region indicator, pad markers |
+| `#waveformDetail` | `.waveformDetail` | 120px | Zoomed window around playhead, beat labels, pad labels |
+
+**Overview pre-render:** The amplitude waveform and beat grid are pre-rendered to an offscreen canvas (`overviewOffscreen`) on track load. Each animation frame blits the offscreen image then draws the playhead, pad markers, and zoom region indicator on top. The offscreen cache is invalidated when the track changes, when beats load, or on window resize.
+
+**Detail canvas:** Renders only the visible time window. Window size is computed from `zoomBeats` × average beat spacing (falls back to `zoomBeats × (60/bpm)` or `zoomBeats × 0.5s`). Playhead is shown at approximately 30% from the left edge during playback.
+
+### Zoom system
+
+- `zoomBeats` state variable: number of beats visible in the detail canvas (range 4–64, default 16, step 4).
+- Zoom slider (`#zoomRange`) in the transport bar updates `zoomBeats` and redraws.
+- Mouse wheel on the detail canvas zooms in/out; zoom center is the cursor position; slider value updates to match.
+- `detailCenter` tracks the time position at the center of the detail view. During playback it follows `currentPosition()`. When stopped it holds the last position.
+
+### Beat grid rendering
+
+`renderBeatGrid(ctx, width, height, startTime, endTime, showLabels)` draws beat lines within the given time window. Lines outside the range are skipped with a bounds check.
+
+| Beat type | Color | Line width | Labels (detail only) |
+|-----------|-------|------------|----------------------|
+| Bar line (beat % 4 === 0) | `--waveform-bar` | 1.5px | "Bar N", 11px monospace, rgba(255,255,255,0.7) |
+| Individual beat | `--waveform-beat` | 0.5px | "1"–"4", 9px monospace (only when zoomBeats ≤ 16) |
+
+Beat index 0 = Bar 1. Bar N starts at beat `(N-1) × 4`. If no beats are stored, beat grid rendering is skipped entirely.
+
+### Waveform color note
+
+The waveform currently uses three-band frequency analysis (low/mid/high via OfflineAudioContext). The `renderFreqWaveform()` function stacks the three bands using `--waveform-low`, `--waveform-mid`, `--waveform-high` CSS variables. Single-band `--waveform-wave` rendering is available but frequency coloring was already present before session 3 landed.
+
+### Design notes for Codex
+
+- `overviewOffscreen` is reset to `null` whenever the track changes, beats reload (`analyzeTrackBeats`), or the window resizes. The next `drawOverview()` call rebuilds it.
+- `detailWindowSeconds()` computes window duration from beat spacing when beats are available; this gives musically correct zoom regardless of BPM variance. The fallback `zoomBeats × 0.5s` applies only when both beats and BPM are absent.
+- Click-to-seek on the overview uses absolute position (`x / width × duration`). Click-to-seek on the detail canvas uses position within the visible window (`start + frac × windowSec`).
 
 ---
 

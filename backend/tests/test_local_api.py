@@ -557,6 +557,37 @@ def test_beats_endpoint_returns_empty_for_track_without_beats(tmp_path) -> None:
     assert payload["beat_confidence"] == 0.0
 
 
+def test_beats_endpoint_returns_exact_stored_confidence(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/confident.mp3",
+            file_name="confident.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            beat_timestamps=[0.0, 0.25, 0.5],
+            beat_confidence=0.95,
+        )
+        connection.commit()
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "GET", f"/api/tracks/{saved_track['id']}/beats")
+
+    assert status == 200
+    assert payload["beat_confidence"] == 0.95
+    assert len(payload["beats"]) == 3
+
+
 @contextmanager
 def _running_api(database_path, frontend_dir):
     handler = _handler_factory(frontend_dir, database_path)
