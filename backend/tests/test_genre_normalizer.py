@@ -141,9 +141,10 @@ def test_metadata_suggestion_maps_bollywood_dance() -> None:
     )
 
     assert result.suggested_decade == "00s"
-    assert result.suggested_genre == "Bollywood"
-    assert result.suggested_subgenre == "Dance"
-    assert result.normalized_label == "00s / Bollywood / Dance"
+    # Bollywood now maps to Indian (primary) with Bollywood Dance subgenre per spec change 5
+    assert result.suggested_genre == "Indian"
+    assert result.suggested_subgenre == "Bollywood Dance"
+    assert result.normalized_label == "00s / Indian / Bollywood Dance"
     assert result.review_required is False
 
 
@@ -209,10 +210,14 @@ def test_metadata_suggestion_broad_genre_conflict_needs_review() -> None:
 
 
 def test_metadata_suggestion_indian_regional_tags_alone_need_review() -> None:
+    # Labels updated per session 6 spec:
+    # - Hindi: language tag, not film industry -> Indian / Hindi (needs_review)
+    # - Punjabi: broad tag -> Indian / Punjabi-Bhangra (needs_review, confidence 0.55)
+    # - Tamil: regional tag -> Indian / Tamil (needs_review)
     cases = [
-        ("Hindi", "00s / Bollywood / Classic Bollywood"),
-        ("Punjabi", "00s / Punjabi / Punjabi Pop"),
-        ("Tamil", "00s / Tamil / Kollywood"),
+        ("Hindi", "00s / Indian / Hindi"),
+        ("Punjabi", "00s / Indian / Punjabi-Bhangra"),
+        ("Tamil", "00s / Indian / Tamil"),
     ]
 
     for original_genre, expected_label in cases:
@@ -237,3 +242,136 @@ def test_metadata_suggestion_vague_dance_genre_needs_review() -> None:
     assert result.normalized_label == "00s / Unknown / Unknown"
     assert result.confidence < 0.7
     assert result.review_required is True
+
+
+# ---- New tests added in session 6 ----
+
+def test_hindi_maps_to_indian_hindi_needs_review() -> None:
+    # Hindi is a language, not a film industry — mapped with needs_review per spec
+    result = suggest_track_metadata(original_genre="Hindi", year="2005")
+
+    assert result.suggested_genre == "Indian"
+    assert result.suggested_subgenre == "Hindi"
+    assert result.review_required is True
+    assert result.confidence < 0.7
+
+
+def test_bollywood_with_dance_context_maps_to_bollywood_dance() -> None:
+    result = suggest_track_metadata(
+        original_genre="Bollywood",
+        title="Club Dance Mix",
+        year="2010",
+    )
+
+    assert result.suggested_genre == "Indian"
+    assert result.suggested_subgenre == "Bollywood Dance"
+    assert result.review_required is False
+
+
+def test_bollywood_without_dance_context_maps_to_classic_bollywood() -> None:
+    result = suggest_track_metadata(original_genre="Bollywood", year="2000")
+
+    assert result.suggested_genre == "Indian"
+    assert result.suggested_subgenre == "Classic Bollywood"
+    assert result.review_required is False
+
+
+def test_telugu_maps_to_indian_telugu_needs_review() -> None:
+    result = normalize_genre("Telugu")
+
+    assert result.primary_genre == "Indian"
+    assert result.subgenre == "Telugu"
+    assert result.review_status == ReviewStatus.NEEDS_REVIEW
+
+
+def test_marathi_maps_to_indian_marathi_needs_review() -> None:
+    result = normalize_genre("Marathi")
+
+    assert result.primary_genre == "Indian"
+    assert result.subgenre == "Marathi"
+    assert result.review_status == ReviewStatus.NEEDS_REVIEW
+
+
+def test_country_maps_to_country_genre() -> None:
+    result = normalize_genre("Country")
+
+    assert result.primary_genre == "Country"
+    assert result.subgenre == "Country"
+    assert result.review_status == ReviewStatus.PENDING
+
+
+def test_house_maps_to_dance_house() -> None:
+    result = normalize_genre("House")
+
+    assert result.primary_genre == "Dance"
+    assert result.subgenre == "House"
+    assert result.review_status == ReviewStatus.PENDING
+
+
+def test_edm_maps_to_dance_edm() -> None:
+    result = normalize_genre("EDM")
+
+    assert result.primary_genre == "Dance"
+    assert result.subgenre == "EDM"
+    assert result.review_status == ReviewStatus.PENDING
+
+
+def test_trap_maps_to_hip_hop_trap() -> None:
+    result = normalize_genre("Trap Music")
+
+    assert result.primary_genre == "Hip-Hop"
+    assert result.subgenre == "Trap"
+    assert result.review_status == ReviewStatus.PENDING
+
+
+def test_pop_with_dance_context_maps_to_dance_pop() -> None:
+    result = suggest_track_metadata(
+        original_genre="Pop",
+        title="Club Remix Edit",
+        year="2015",
+    )
+
+    assert result.suggested_genre == "Pop"
+    assert result.suggested_subgenre == "Dance Pop"
+    assert result.review_required is False
+
+
+def test_freestyle_with_latin_context_maps_to_latin_freestyle() -> None:
+    result = suggest_track_metadata(
+        original_genre="Freestyle",
+        title="Latin Night Mix",
+        year="1995",
+    )
+
+    assert result.suggested_genre == "Freestyle"
+    assert result.suggested_subgenre == "Latin Freestyle"
+    assert result.review_required is False
+
+
+def test_merengue_maps_to_latin_merengue() -> None:
+    result = normalize_genre("Merengue")
+
+    assert result.primary_genre == "Latin"
+    assert result.subgenre == "Merengue"
+    assert result.review_status == ReviewStatus.PENDING
+
+
+def test_punjabi_maps_with_needs_review() -> None:
+    # Punjabi is a broad language tag — could be bhangra, pop, or folk
+    result = suggest_track_metadata(original_genre="Punjabi", year="2010")
+
+    assert result.suggested_genre == "Indian"
+    assert result.review_required is True
+    assert result.confidence < 0.7
+
+
+def test_normalize_genre_and_suggest_track_metadata_produce_consistent_results() -> None:
+    # After consolidation both use the same code path
+    genre = "Salsa"
+    year = "1998"
+
+    norm = normalize_genre(genre)
+    suggestion = suggest_track_metadata(original_genre=genre, year=year)
+
+    assert norm.primary_genre == suggestion.suggested_genre
+    assert norm.subgenre == suggestion.suggested_subgenre
