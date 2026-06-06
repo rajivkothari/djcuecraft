@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DJ CueCraft Review</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
   </head>
   <body>
     <header class="topbar">
@@ -54,19 +54,33 @@
           <span id="editorTrackMeta"></span>
         </div>
         <div class="editorTransport">
-          <button id="playButton" type="button" disabled>▶ Play</button>
-          <button id="stopButton" class="secondaryButton" type="button" disabled>■ Stop</button>
+          <label class="volumeControl">
+            Vol
+            <input type="range" id="volumeRange" min="0" max="100" value="80" step="1" />
+          </label>
+          <button id="playButton" type="button" disabled>&#9654; Play</button>
+          <button id="stopButton" class="secondaryButton" type="button" disabled>&#9632; Stop</button>
           <span id="editorTime" class="editorTime">0:00 / 0:00</span>
           <label class="metronomeToggle">
             <input type="checkbox" id="metronomeToggle" /> Metronome
           </label>
+          <label class="zoomControl">
+            Zoom
+            <input type="range" id="zoomRange" min="4" max="64" value="16" step="4" />
+          </label>
           <span id="editorBpm" class="editorBpm"></span>
         </div>
       </div>
-      <canvas id="waveform" class="waveform" height="120"></canvas>
+      <canvas id="waveformOverview" class="waveformOverview" height="80"></canvas>
+      <canvas id="waveformDetail" class="waveformDetail" height="120"></canvas>
       <div class="padBar">
         <button id="analyzeBeatsButton" type="button" disabled>Analyze beats</button>
-        <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill pads (phrase)</button>
+        <label class="padPresetLabel">Preset
+          <select id="padPreset" disabled>
+            <option value="">phrase</option>
+          </select>
+        </label>
+        <button id="autoFillPadsButton" class="secondaryButton" type="button" disabled>Auto-fill pads</button>
         <button id="clearAllPadsButton" class="secondaryButton" type="button" disabled>Clear all</button>
         <span id="padState" class="padState"></span>
       </div>
@@ -79,7 +93,7 @@
           <span class="padLabel" data-field="label"></span>
           <button class="padRename" type="button" title="Rename pad" aria-label="Rename pad">&#9998;</button>
         </div>
-        <div class="padTime" data-field="time">—</div>
+        <div class="padTime" data-field="time">&mdash;</div>
         <div class="padButtons">
           <button class="padJump" type="button">Jump</button>
           <button class="padSet secondaryButton" type="button" title="Set to current playhead">Set</button>
@@ -90,7 +104,7 @@
 
     <template id="trackRowTemplate">
       <tr class="summaryRow">
-        <td class="caretCol"><span class="caret">▸</span></td>
+        <td class="caretCol"><span class="caret">&#9656;</span></td>
         <td class="trackCell">
           <strong data-field="file_name"></strong>
           <span data-field="file_path"></span>
@@ -161,6 +175,6 @@
       </tr>
     </template>
 
-    <script src="./app.js?v=4"></script>
+    <script src="./app.js?v=6"></script>
   </body>
 </html>

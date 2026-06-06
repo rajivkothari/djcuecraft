@@ -99,6 +99,14 @@ def _handler_factory(frontend_dir: Path, database_path: Path):
                     return
                 self._write_json({"pads": pads})
                 return
+            if len(parts) == 4 and parts[:2] == ["api", "tracks"] and parts[3] == "beats":
+                try:
+                    track_id = int(parts[2])
+                except ValueError:
+                    self._write_json({"error": "Invalid track ID"}, status=400)
+                    return
+                self._write_json(_list_beats_for_track(database_path, track_id))
+                return
             super().do_GET()
 
         def do_POST(self) -> None:
@@ -318,6 +326,19 @@ def _cue_template_from_payload(payload: dict) -> tuple[CueTemplate, ...]:
 def _list_cue_points(database_path: Path) -> list[dict]:
     with database.connect(database_path) as connection:
         return [dict(row) for row in database.list_cue_points(connection)]
+
+
+def _list_beats_for_track(database_path: Path, track_id: int) -> dict:
+    with database.connect(database_path) as connection:
+        beats = database.list_beat_timestamps_for_track(connection, track_id)
+        if not beats:
+            return {"beats": [], "beat_confidence": 0.0}
+        row = connection.execute(
+            "SELECT beat_confidence FROM beat_timestamps WHERE track_id = ? LIMIT 1",
+            (track_id,),
+        ).fetchone()
+        confidence = float(row["beat_confidence"]) if row else 0.0
+    return {"beats": beats, "beat_confidence": confidence}
 
 
 def _analyze_beats_for_track(database_path: Path, track_id: int) -> dict:

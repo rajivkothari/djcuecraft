@@ -11,10 +11,14 @@ const editorTime = document.querySelector("#editorTime");
 const playButton = document.querySelector("#playButton");
 const stopButton = document.querySelector("#stopButton");
 const metronomeToggle = document.querySelector("#metronomeToggle");
-const waveformCanvas = document.querySelector("#waveform");
+const volumeRange = document.querySelector("#volumeRange");
+const zoomRange = document.querySelector("#zoomRange");
+const overviewCanvas = document.querySelector("#waveformOverview");
+const detailCanvas = document.querySelector("#waveformDetail");
 const analyzeBeatsButton = document.querySelector("#analyzeBeatsButton");
 const autoFillPadsButton = document.querySelector("#autoFillPadsButton");
 const clearAllPadsButton = document.querySelector("#clearAllPadsButton");
+const padPresetSelect = document.querySelector("#padPreset");
 const padState = document.querySelector("#padState");
 const padGrid = document.querySelector("#padGrid");
 const padTemplate = document.querySelector("#padTemplate");
@@ -31,11 +35,30 @@ refreshButton.addEventListener("click", loadTracks);
 statusFilter.addEventListener("change", loadTracks);
 
 loadTracks();
+loadCuePresets();
 
 /* ---------------------------------------------------------------------------
  * Track list: each row is a collapsed summary. Clicking it expands an inline
  * metadata editor and loads the track into the cue editor below.
  * ------------------------------------------------------------------------ */
+
+async function loadCuePresets() {
+  try {
+    const response = await fetch("/api/cue-presets");
+    if (!response.ok) return;
+    const payload = await response.json();
+    const presets = payload.presets || [];
+    const defaultPreset = payload.default_preset || "";
+    padPresetSelect.innerHTML = '<option value="">phrase</option>';
+    for (const name of presets) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      if (name === defaultPreset) opt.selected = true;
+      padPresetSelect.appendChild(opt);
+    }
+  } catch (_) {}
+}
 
 async function loadTracks() {
   rowsEl.innerHTML = "";
@@ -271,12 +294,12 @@ async function responseErrorMessage(response, fallback) {
 }
 
 /* ---------------------------------------------------------------------------
- * Cue editor: waveform, transport, metronome, and 8 cue pads.
- * Audio is fetched once and decoded with the Web Audio API, so playback and
- * the waveform come from the same buffer. Audio files are never modified.
+ * Cue editor: dual-canvas waveform, transport, metronome, volume, zoom,
+ * and 8 cue pads. Audio files are never modified.
  * ------------------------------------------------------------------------ */
 
 let audioCtx = null;
+let gainNode = null;
 let audioBuffer = null;
 let sourceNode = null;
 let isPlaying = false;
@@ -290,11 +313,25 @@ let metronomeTimer = null;
 let nextBeatTime = 0;
 let rafId = null;
 
+let freqBands = null;
+let overviewOffscreen = null;
+let beatTimestamps = [];
+let beatConfidence = 0;
+let zoomBeats = 16;
+let detailCenter = 0;
+
 playButton.addEventListener("click", togglePlay);
 stopButton.addEventListener("click", stopPlayback);
 analyzeBeatsButton.addEventListener("click", analyzeTrackBeats);
 autoFillPadsButton.addEventListener("click", autoFillPads);
 clearAllPadsButton.addEventListener("click", clearAllPads);
+volumeRange.addEventListener("input", () => {
+  if (gainNode) gainNode.gain.value = volumeRange.value / 100;
+});
+zoomRange.addEventListener("input", () => {
+  zoomBeats = Number(zoomRange.value);
+  drawAll();
+});
 metronomeToggle.addEventListener("change", () => {
   if (metronomeToggle.checked && isPlaying) {
     startMetronome();
@@ -302,18 +339,38 @@ metronomeToggle.addEventListener("change", () => {
     stopMetronome();
   }
 });
-waveformCanvas.addEventListener("click", (event) => {
+overviewCanvas.addEventListener("click", (event) => {
   if (!audioBuffer || duration <= 0) return;
-  const rect = waveformCanvas.getBoundingClientRect();
-  seek(((event.clientX - rect.left) / rect.width) * duration);
+  const rect = overviewCanvas.getBoundingClientRect();
+  const t = ((event.clientX - rect.left) / rect.width) * duration;
+  seek(t);
 });
+detailCanvas.addEventListener("click", (event) => {
+  if (!audioBuffer || duration <= 0) return;
+  const rect = detailCanvas.getBoundingClientRect();
+  const frac = (event.clientX - rect.left) / rect.width;
+  const windowSec = detailWindowSeconds();
+  const start = detailCenter - windowSec / 2;
+  seek(start + frac * windowSec);
+});
+detailCanvas.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const delta = event.deltaY > 0 ? 4 : -4;
+  zoomBeats = Math.max(4, Math.min(64, zoomBeats + delta));
+  zoomRange.value = zoomBeats;
+  drawAll();
+}, { passive: false });
 window.addEventListener("resize", () => {
-  if (selectedTrack) drawWaveform();
+  overviewOffscreen = null;
+  if (selectedTrack) drawAll();
 });
 
 function getAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode = audioCtx.createGain();
+    gainNode.gain.value = volumeRange.value / 100;
+    gainNode.connect(audioCtx.destination);
   }
   return audioCtx;
 }
@@ -328,6 +385,11 @@ async function selectTrackForEditor(track, rowEl) {
   duration = 0;
   playStartOffset = 0;
   selectedTrack = track;
+  freqBands = null;
+  overviewOffscreen = null;
+  beatTimestamps = [];
+  beatConfidence = 0;
+  detailCenter = 0;
 
   editorTrackName.textContent = track.file_name || track.file_path || "Track";
   editorTrackMeta.textContent = [track.artist, track.title].filter(Boolean).join(" — ");
@@ -335,15 +397,31 @@ async function selectTrackForEditor(track, rowEl) {
   analyzeBeatsButton.disabled = false;
   autoFillPadsButton.disabled = false;
   clearAllPadsButton.disabled = false;
+  padPresetSelect.disabled = false;
 
   await loadPads(track.id);
-  await loadAudio(track);
+  await Promise.all([loadAudio(track), loadBeats(track.id)]);
+}
+
+async function loadBeats(trackId) {
+  try {
+    const response = await fetch(`/api/tracks/${trackId}/beats`);
+    if (!response.ok) return;
+    const payload = await response.json();
+    beatTimestamps = payload.beats || [];
+    beatConfidence = payload.beat_confidence || 0;
+  } catch (_) {
+    beatTimestamps = [];
+    beatConfidence = 0;
+  }
 }
 
 async function loadAudio(track) {
   playButton.disabled = true;
   stopButton.disabled = true;
   editorTime.textContent = "Loading audio…";
+  drawCanvasMessage(overviewCanvas, 80, "Loading audio…");
+  drawCanvasMessage(detailCanvas, 120, "");
   try {
     const response = await fetch(`/api/audio?path=${encodeURIComponent(track.file_path)}`);
     if (!response.ok) throw new Error("audio load failed");
@@ -352,13 +430,36 @@ async function loadAudio(track) {
     duration = audioBuffer.duration;
     playButton.disabled = false;
     stopButton.disabled = false;
-    drawWaveform();
+
+    drawCanvasMessage(overviewCanvas, 80, "Analyzing frequencies…");
+    drawCanvasMessage(detailCanvas, 120, "Analyzing frequencies…");
+    freqBands = await computeFrequencyBands(audioBuffer);
+    overviewOffscreen = null;
+
+    drawAll();
     updateTime();
     renderPads();
   } catch (error) {
     audioBuffer = null;
     editorTime.textContent = "Audio unavailable";
-    drawWaveform();
+    drawCanvasMessage(overviewCanvas, 80, "Audio unavailable");
+    drawCanvasMessage(detailCanvas, 120, "");
+  }
+}
+
+function drawCanvasMessage(canvas, cssHeight, msg) {
+  const cssWidth = canvas.clientWidth || 800;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--waveform-bg").trim() || "#1a1a2e";
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+  if (msg) {
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(msg, 10, cssHeight / 2 + 4);
   }
 }
 
@@ -378,7 +479,7 @@ function startPlaybackFrom(offset) {
   stopSource();
   sourceNode = ctx.createBufferSource();
   sourceNode.buffer = audioBuffer;
-  sourceNode.connect(ctx.destination);
+  sourceNode.connect(gainNode);
   sourceNode.onended = handleSourceEnded;
   playStartOffset = Math.max(0, Math.min(offset, duration));
   playStartCtxTime = ctx.currentTime;
@@ -399,7 +500,8 @@ function pause() {
   playButton.textContent = "▶ Play";
   stopMetronome();
   stopRAF();
-  drawWaveform();
+  detailCenter = playStartOffset;
+  drawAll();
   updateTime();
 }
 
@@ -410,18 +512,15 @@ function stopPlayback() {
   playButton.textContent = "▶ Play";
   stopMetronome();
   stopRAF();
-  drawWaveform();
+  detailCenter = 0;
+  drawAll();
   updateTime();
 }
 
 function stopSource() {
   if (sourceNode) {
     sourceNode.onended = null;
-    try {
-      sourceNode.stop();
-    } catch (error) {
-      // already stopped
-    }
+    try { sourceNode.stop(); } catch (_) {}
     sourceNode.disconnect();
     sourceNode = null;
   }
@@ -434,17 +533,19 @@ function handleSourceEnded() {
   playButton.textContent = "▶ Play";
   stopMetronome();
   stopRAF();
-  drawWaveform();
+  detailCenter = 0;
+  drawAll();
   updateTime();
 }
 
 function seek(position) {
   const clamped = Math.max(0, Math.min(position, duration));
+  detailCenter = clamped;
   if (isPlaying) {
     startPlaybackFrom(clamped);
   } else {
     playStartOffset = clamped;
-    drawWaveform();
+    drawAll();
     updateTime();
   }
 }
@@ -466,7 +567,9 @@ function stopRAF() {
 }
 
 function tick() {
-  drawWaveform();
+  const pos = currentPosition();
+  detailCenter = pos;
+  drawAll();
   updateTime();
   rafId = requestAnimationFrame(tick);
 }
@@ -520,82 +623,279 @@ function scheduleMetronome() {
 
 function clickAt(ctx, when) {
   const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.frequency.value = 1600;
-  gain.gain.setValueAtTime(0.0001, when);
-  gain.gain.exponentialRampToValueAtTime(0.4, when + 0.001);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
-  osc.connect(gain).connect(ctx.destination);
+  const clickGain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.value = 1000;
+  clickGain.gain.setValueAtTime(0.0001, when);
+  clickGain.gain.exponentialRampToValueAtTime(1.0, when + 0.001);
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.04);
+  osc.connect(clickGain).connect(ctx.destination);
   osc.start(when);
-  osc.stop(when + 0.06);
+  osc.stop(when + 0.05);
 }
 
-/* ---- Waveform ---- */
+/* ---- Frequency Analysis (three-band FFT via OfflineAudioContext) ---- */
 
-function drawWaveform() {
-  const canvas = waveformCanvas;
+async function computeFrequencyBands(buffer) {
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length;
+  const numChannels = buffer.numberOfChannels;
+
+  async function renderFiltered(type, freq) {
+    const offline = new OfflineAudioContext(1, length, sampleRate);
+    const source = offline.createBufferSource();
+    source.buffer = buffer;
+    const filter = offline.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = freq;
+    if (type === "bandpass") {
+      filter.Q.value = 1.2;
+    }
+    source.connect(filter);
+    filter.connect(offline.destination);
+    source.start(0);
+    const rendered = await offline.startRendering();
+    return rendered.getChannelData(0);
+  }
+
+  const [lowData, midData, highData] = await Promise.all([
+    renderFiltered("lowpass", 250),
+    renderFiltered("bandpass", 1000),
+    renderFiltered("highpass", 4000),
+  ]);
+
+  const bucketSize = 2048;
+  const numBuckets = Math.ceil(length / bucketSize);
+  const low = new Float32Array(numBuckets);
+  const mid = new Float32Array(numBuckets);
+  const high = new Float32Array(numBuckets);
+
+  for (let i = 0; i < numBuckets; i++) {
+    const start = i * bucketSize;
+    const end = Math.min(start + bucketSize, length);
+    let sumL = 0, sumM = 0, sumH = 0;
+    for (let j = start; j < end; j++) {
+      sumL += lowData[j] * lowData[j];
+      sumM += midData[j] * midData[j];
+      sumH += highData[j] * highData[j];
+    }
+    const n = end - start;
+    low[i] = Math.sqrt(sumL / n);
+    mid[i] = Math.sqrt(sumM / n);
+    high[i] = Math.sqrt(sumH / n);
+  }
+
+  let maxVal = 0;
+  for (let i = 0; i < numBuckets; i++) {
+    const total = low[i] + mid[i] + high[i];
+    if (total > maxVal) maxVal = total;
+  }
+  if (maxVal > 0) {
+    for (let i = 0; i < numBuckets; i++) {
+      low[i] /= maxVal;
+      mid[i] /= maxVal;
+      high[i] /= maxVal;
+    }
+  }
+
+  return { low, mid, high, numBuckets, bucketSize, sampleRate: sampleRate };
+}
+
+/* ---- Waveform Drawing ---- */
+
+function drawAll() {
+  drawOverview();
+  drawDetail();
+}
+
+function getStyle(prop) {
+  return getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
+}
+
+function drawOverview() {
+  const canvas = overviewCanvas;
+  const cssWidth = canvas.clientWidth || 800;
+  const cssHeight = 80;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const bg = getStyle("--waveform-bg") || "#1a1a2e";
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+  if (!freqBands || !audioBuffer) {
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "13px sans-serif";
+    ctx.fillText("No waveform loaded", 10, cssHeight / 2 + 4);
+    return;
+  }
+
+  if (!overviewOffscreen || overviewOffscreen.width !== cssWidth * dpr) {
+    overviewOffscreen = document.createElement("canvas");
+    overviewOffscreen.width = cssWidth * dpr;
+    overviewOffscreen.height = cssHeight * dpr;
+    const offCtx = overviewOffscreen.getContext("2d");
+    offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    offCtx.fillStyle = bg;
+    offCtx.fillRect(0, 0, cssWidth, cssHeight);
+    renderFreqWaveform(offCtx, cssWidth, cssHeight, freqBands, 0, duration);
+    renderBeatGrid(offCtx, cssWidth, cssHeight, 0, duration, false);
+  }
+
+  ctx.drawImage(overviewOffscreen, 0, 0);
+
+  if (duration > 0) {
+    const windowSec = detailWindowSeconds();
+    const startFrac = Math.max(0, (detailCenter - windowSec / 2) / duration);
+    const endFrac = Math.min(1, (detailCenter + windowSec / 2) / duration);
+    ctx.fillStyle = getStyle("--waveform-zoom-region") || "rgba(255,255,255,0.08)";
+    ctx.fillRect(startFrac * cssWidth, 0, (endFrac - startFrac) * cssWidth, cssHeight);
+
+    for (const pad of padsData) {
+      if (pad.timestamp_seconds == null) continue;
+      const x = (pad.timestamp_seconds / duration) * cssWidth;
+      ctx.fillStyle = getStyle("--waveform-cue") || "#e74c3c";
+      ctx.fillRect(x, 0, 1.5, cssHeight);
+      ctx.font = "9px monospace";
+      ctx.fillText(String(pad.pad_index + 1), x + 2, 10);
+    }
+
+    const playheadX = (currentPosition() / duration) * cssWidth;
+    ctx.fillStyle = getStyle("--waveform-playhead") || "#ffffff";
+    ctx.fillRect(playheadX, 0, 2, cssHeight);
+  }
+}
+
+function drawDetail() {
+  const canvas = detailCanvas;
   const cssWidth = canvas.clientWidth || 800;
   const cssHeight = 120;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = cssWidth * dpr;
   canvas.height = cssHeight * dpr;
-  const ctx2d = canvas.getContext("2d");
-  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx2d.clearRect(0, 0, cssWidth, cssHeight);
-  ctx2d.fillStyle = "#eef2f5";
-  ctx2d.fillRect(0, 0, cssWidth, cssHeight);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  if (audioBuffer) {
-    const peaks = computePeaks(audioBuffer, cssWidth);
-    const mid = cssHeight / 2;
-    ctx2d.fillStyle = "#0f766e";
-    for (let x = 0; x < peaks.length; x++) {
-      const top = mid + peaks[x].min * mid;
-      const bottom = mid + peaks[x].max * mid;
-      ctx2d.fillRect(x, top, 1, Math.max(1, bottom - top));
-    }
-  } else {
-    ctx2d.fillStyle = "#5f6b7a";
-    ctx2d.font = "13px sans-serif";
-    ctx2d.fillText("No waveform loaded", 10, 24);
-  }
+  const bg = getStyle("--waveform-bg") || "#1a1a2e";
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+  if (!freqBands || !audioBuffer) return;
+
+  const windowSec = detailWindowSeconds();
+  const startTime = Math.max(0, detailCenter - windowSec / 2);
+  const endTime = Math.min(duration, startTime + windowSec);
+
+  renderFreqWaveform(ctx, cssWidth, cssHeight, freqBands, startTime, endTime);
+  renderBeatGrid(ctx, cssWidth, cssHeight, startTime, endTime, true);
 
   if (duration > 0) {
     for (const pad of padsData) {
       if (pad.timestamp_seconds == null) continue;
-      const x = (pad.timestamp_seconds / duration) * cssWidth;
-      ctx2d.fillStyle = "#a33a3a";
-      ctx2d.fillRect(x, 0, 2, cssHeight);
-      ctx2d.font = "10px sans-serif";
-      ctx2d.fillText(String(pad.pad_index + 1), x + 3, 11);
+      if (pad.timestamp_seconds < startTime || pad.timestamp_seconds > endTime) continue;
+      const x = ((pad.timestamp_seconds - startTime) / (endTime - startTime)) * cssWidth;
+      ctx.fillStyle = getStyle("--waveform-cue") || "#e74c3c";
+      ctx.fillRect(x, 0, 2, cssHeight);
+      ctx.save();
+      ctx.font = "10px monospace";
+      ctx.fillStyle = getStyle("--waveform-cue") || "#e74c3c";
+      ctx.translate(x + 12, cssHeight - 6);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(pad.label || `Pad ${pad.pad_index + 1}`, 0, 0);
+      ctx.restore();
     }
-    const playheadX = (currentPosition() / duration) * cssWidth;
-    ctx2d.fillStyle = "#2563eb";
-    ctx2d.fillRect(playheadX, 0, 2, cssHeight);
+
+    const pos = currentPosition();
+    if (pos >= startTime && pos <= endTime) {
+      const playheadX = ((pos - startTime) / (endTime - startTime)) * cssWidth;
+      ctx.fillStyle = getStyle("--waveform-playhead") || "#ffffff";
+      ctx.fillRect(playheadX, 0, 2, cssHeight);
+    }
   }
 }
 
-function computePeaks(buffer, width) {
-  const data = buffer.getChannelData(0);
-  const samplesPerBucket = Math.floor(data.length / width) || 1;
-  const peaks = [];
-  for (let i = 0; i < width; i++) {
-    let min = 1.0;
-    let max = -1.0;
-    const start = i * samplesPerBucket;
-    const end = Math.min(start + samplesPerBucket, data.length);
-    for (let j = start; j < end; j++) {
-      const value = data[j];
-      if (value < min) min = value;
-      if (value > max) max = value;
-    }
-    if (min > max) {
-      min = 0;
-      max = 0;
-    }
-    peaks.push({ min, max });
+function detailWindowSeconds() {
+  if (beatTimestamps.length >= 2) {
+    const avgBeatDur = beatTimestamps[beatTimestamps.length - 1] / (beatTimestamps.length - 1);
+    return zoomBeats * avgBeatDur;
   }
-  return peaks;
+  if (selectedTrack && selectedTrack.bpm && Number(selectedTrack.bpm) > 0) {
+    return zoomBeats * (60 / Number(selectedTrack.bpm));
+  }
+  return zoomBeats * 0.5;
+}
+
+function renderFreqWaveform(ctx, width, height, bands, startTime, endTime) {
+  const { low, mid, high, numBuckets, bucketSize, sampleRate } = bands;
+  const midY = height / 2;
+  const colorLow = getStyle("--waveform-low") || "#e74c3c";
+  const colorMid = getStyle("--waveform-mid") || "#2ecc71";
+  const colorHigh = getStyle("--waveform-high") || "#3498db";
+
+  const startBucket = Math.floor((startTime * sampleRate) / bucketSize);
+  const endBucket = Math.ceil((endTime * sampleRate) / bucketSize);
+
+  for (let x = 0; x < width; x++) {
+    const frac = x / width;
+    const bi = startBucket + frac * (endBucket - startBucket);
+    const idx = Math.min(Math.floor(bi), numBuckets - 1);
+    if (idx < 0) continue;
+
+    const l = low[idx] || 0;
+    const m = mid[idx] || 0;
+    const h = high[idx] || 0;
+    const total = (l + m + h) * midY * 0.95;
+
+    const hH = h / (l + m + h + 0.0001) * total;
+    const mH = m / (l + m + h + 0.0001) * total;
+    const lH = l / (l + m + h + 0.0001) * total;
+
+    ctx.fillStyle = colorLow;
+    ctx.fillRect(x, midY - lH / 2, 1, lH || 0.5);
+    ctx.fillRect(x, midY, 1, lH / 2 || 0.25);
+
+    ctx.fillStyle = colorMid;
+    ctx.fillRect(x, midY - lH / 2 - mH / 2, 1, mH / 2 || 0.25);
+    ctx.fillRect(x, midY + lH / 2, 1, mH / 2 || 0.25);
+
+    ctx.fillStyle = colorHigh;
+    ctx.fillRect(x, midY - lH / 2 - mH / 2 - hH / 2, 1, hH / 2 || 0.25);
+    ctx.fillRect(x, midY + lH / 2 + mH / 2, 1, hH / 2 || 0.25);
+  }
+}
+
+function renderBeatGrid(ctx, width, height, startTime, endTime, showLabels) {
+  if (beatTimestamps.length === 0) return;
+  const beatColor = getStyle("--waveform-beat") || "rgba(255,255,255,0.25)";
+  const barColor = getStyle("--waveform-bar") || "rgba(255,255,255,0.5)";
+  const timeRange = endTime - startTime;
+  if (timeRange <= 0) return;
+
+  for (let i = 0; i < beatTimestamps.length; i++) {
+    const t = beatTimestamps[i];
+    if (t < startTime || t > endTime) continue;
+    const x = ((t - startTime) / timeRange) * width;
+    const isBar = (i % 4) === 0;
+    ctx.fillStyle = isBar ? barColor : beatColor;
+    ctx.fillRect(x, 0, isBar ? 1.5 : 0.5, height);
+
+    if (showLabels) {
+      const beatInBar = (i % 4) + 1;
+      const barNum = Math.floor(i / 4) + 1;
+      if (isBar) {
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.font = "11px monospace";
+        ctx.fillText(`Bar ${barNum}`, x + 3, 12);
+      } else if (zoomBeats <= 16) {
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.font = "9px monospace";
+        ctx.fillText(String(beatInBar), x + 2, 12);
+      }
+    }
+  }
 }
 
 /* ---- Pads ---- */
@@ -611,7 +911,7 @@ async function loadPads(trackId) {
     padsData = [];
   }
   renderPads();
-  drawWaveform();
+  drawAll();
   padState.textContent = padsData.some((pad) => pad.timestamp_seconds != null)
     ? ""
     : "No pad positions yet — Analyze beats, Auto-fill, or Set from the playhead";
@@ -629,7 +929,10 @@ function renderPads() {
     const jumpBtn = el.querySelector(".padJump");
     jumpBtn.disabled = pad.timestamp_seconds == null || !audioBuffer;
     jumpBtn.addEventListener("click", () => {
-      if (pad.timestamp_seconds != null) startPlaybackFrom(pad.timestamp_seconds);
+      if (pad.timestamp_seconds != null) {
+        detailCenter = pad.timestamp_seconds;
+        startPlaybackFrom(pad.timestamp_seconds);
+      }
     });
 
     el.querySelector(".padSet").addEventListener("click", () => setPadFromPlayhead(pad.pad_index));
@@ -733,7 +1036,7 @@ async function clearAllPads() {
     const payload = await response.json();
     padsData = payload.pads || [];
     renderPads();
-    drawWaveform();
+    drawAll();
     padState.textContent = "All pads cleared";
   } catch (error) {
     padState.textContent = "Clear failed";
@@ -755,7 +1058,9 @@ async function analyzeTrackBeats() {
     const payload = await response.json();
     padsData = payload.pads || [];
     renderPads();
-    drawWaveform();
+    await loadBeats(selectedTrack.id);
+    overviewOffscreen = null;
+    drawAll();
     padState.textContent = `${payload.stored_beats || 0} beats detected — pads filled`;
   } catch (error) {
     padState.textContent = "Beat analysis failed";
@@ -769,10 +1074,14 @@ async function autoFillPads() {
   autoFillPadsButton.disabled = true;
   padState.textContent = "Auto-filling…";
   try {
+    const preset = padPresetSelect.value;
+    const body = {};
+    if (preset) body.preset = preset;
+    if (duration > 0) body.total_duration_seconds = duration;
     const response = await fetch(`/api/tracks/${selectedTrack.id}/pads/auto-fill`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       padState.textContent = await responseErrorMessage(response, "Auto-fill failed");
@@ -781,8 +1090,9 @@ async function autoFillPads() {
     const payload = await response.json();
     padsData = payload.pads || [];
     renderPads();
-    drawWaveform();
-    padState.textContent = "Pads filled from phrasing";
+    drawAll();
+    const label = preset || "phrase";
+    padState.textContent = `Pads filled (${label})`;
   } catch (error) {
     padState.textContent = "Auto-fill failed";
   } finally {

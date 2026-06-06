@@ -8,6 +8,15 @@
   --accent: #0f766e;
   --danger: #a33a3a;
   --focus: #2563eb;
+  --waveform-low: #e74c3c;
+  --waveform-mid: #2ecc71;
+  --waveform-high: #3498db;
+  --waveform-bg: #1a1a2e;
+  --waveform-playhead: #ffffff;
+  --waveform-beat: rgba(255, 255, 255, 0.25);
+  --waveform-bar: rgba(255, 255, 255, 0.5);
+  --waveform-cue: #e74c3c;
+  --waveform-zoom-region: rgba(255, 255, 255, 0.08);
 }
 
 * {
@@ -413,7 +422,7 @@ dd {
 
 .trackCell.selectable::after {
   color: var(--muted);
-  content: " ⏏ click to open in editor";
+  content: " \23CF click to open in editor";
   font-size: 11px;
   font-weight: 500;
 }
@@ -502,11 +511,51 @@ main {
   min-height: auto;
 }
 
-.waveform {
-  background: #eef2f5;
+.volumeControl {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.volumeControl input[type="range"] {
+  border: none;
+  min-height: auto;
+  width: 60px;
+}
+
+.zoomControl {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.zoomControl input[type="range"] {
+  border: none;
+  min-height: auto;
+  width: 80px;
+}
+
+.waveformOverview {
+  background: var(--waveform-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
   cursor: pointer;
+  display: block;
+  height: 80px;
+  width: 100%;
+}
+
+.waveformDetail {
+  background: var(--waveform-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: crosshair;
   display: block;
   height: 120px;
   width: 100%;

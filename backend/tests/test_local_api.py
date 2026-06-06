@@ -504,6 +504,59 @@ def test_clear_all_pads_endpoint(tmp_path) -> None:
     assert all(pad["timestamp_seconds"] is None for pad in payload["pads"])
 
 
+def test_beats_endpoint_returns_stored_beats(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/song.mp3",
+            file_name="song.mp3",
+            file_extension=".mp3",
+        ),
+    )
+    with database.connect(db_path) as connection:
+        database.replace_beat_timestamps(
+            connection,
+            track_id=saved_track["id"],
+            file_path=saved_track["file_path"],
+            beat_timestamps=[0.0, 0.5, 1.0, 1.5, 2.0],
+            beat_confidence=0.82,
+        )
+        connection.commit()
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "GET", f"/api/tracks/{saved_track['id']}/beats")
+
+    assert status == 200
+    assert payload["beats"] == [0.0, 0.5, 1.0, 1.5, 2.0]
+    assert payload["beat_confidence"] == 0.82
+
+
+def test_beats_endpoint_returns_empty_for_track_without_beats(tmp_path) -> None:
+    db_path = tmp_path / "tracks.sqlite3"
+    frontend_dir = tmp_path / "frontend"
+    frontend_dir.mkdir()
+
+    saved_track = _save_track(
+        db_path,
+        Track(
+            file_path="C:/Music/no-beats.mp3",
+            file_name="no-beats.mp3",
+            file_extension=".mp3",
+        ),
+    )
+
+    with _running_api(db_path, frontend_dir) as server:
+        status, payload = _request(server, "GET", f"/api/tracks/{saved_track['id']}/beats")
+
+    assert status == 200
+    assert payload["beats"] == []
+    assert payload["beat_confidence"] == 0.0
+
+
 @contextmanager
 def _running_api(database_path, frontend_dir):
     handler = _handler_factory(frontend_dir, database_path)
